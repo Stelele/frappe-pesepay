@@ -1,0 +1,97 @@
+{% extends "templates/web.html" %}
+
+{% block title %}{{ title or _("Payment") }}{% endblock %}
+
+{% block page_content %}
+<div class="pesepay-checkout" style="max-width: 500px; margin: 0 auto; padding: 20px;">
+	<h3>{{ title or _("Complete Payment") }}</h3>
+	<p class="text-muted">{{ _("Amount") }}: <strong>{{ amount }}</strong></p>
+	<p class="text-muted">{{ description }}</p>
+
+	<form id="pesepay-seamless-form">
+		<input type="hidden" name="gateway_name" value="{{ payment_gateway }}">
+		<input type="hidden" name="amount" value="{{ frappe.form_dict.amount }}">
+		<input type="hidden" name="currency" value="{{ currency }}">
+		<input type="hidden" name="title" value="{{ title }}">
+		<input type="hidden" name="reference_doctype" value="{{ reference_doctype }}">
+		<input type="hidden" name="reference_docname" value="{{ reference_docname }}">
+
+		<div class="form-group">
+			<label>{{ _("Payment Method") }}</label>
+			<select class="form-control" id="payment-method" name="payment_method" required>
+				<option value="">{{ _("Select payment method") }}</option>
+				{% for method in payment_methods %}
+					<option value="{{ method.code }}">{{ method.label }}</option>
+				{% endfor %}
+			</select>
+		</div>
+
+		<div class="form-group">
+			<label>{{ _("Email") }}</label>
+			<input type="email" class="form-control" name="email"
+				value="{{ payer_email or '' }}" required>
+		</div>
+
+		<div class="form-group">
+			<label>{{ _("Your Name") }}</label>
+			<input type="text" class="form-control" name="customer_name"
+				value="{{ payer_name or '' }}" required>
+		</div>
+
+		<div id="phone-fields">
+			<div class="form-group">
+				<label>{{ _("Phone Number") }}</label>
+				<input type="tel" class="form-control" name="phone_number"
+					placeholder="{{ _('e.g. 0771234567') }}">
+			</div>
+		</div>
+
+		<div id="card-fields" style="display: none;">
+			<div class="form-group">
+				<label>{{ _("Cardholder Name") }}</label>
+				<input type="text" class="form-control" name="card_holder"
+					value="{{ payer_name or '' }}">
+			</div>
+			<div class="form-group">
+				<label>{{ _("Card Number") }}</label>
+				<input type="text" class="form-control" name="card_number"
+					placeholder="1234 5678 9012 3456" maxlength="19">
+			</div>
+			<div class="row">
+				<div class="col-sm-6 form-group">
+					<label>{{ _("Expiry (MM/YY)") }}</label>
+					<input type="text" class="form-control" name="card_expiry"
+						placeholder="MM/YY" maxlength="5">
+				</div>
+				<div class="col-sm-6 form-group">
+					<label>{{ _("CVV") }}</label>
+					<input type="text" class="form-control" name="card_cvv"
+						placeholder="123" maxlength="4">
+				</div>
+			</div>
+		</div>
+
+		<button type="submit" class="btn btn-primary btn-block" id="submit-btn">
+			{{ _("Pay Now") }}
+		</button>
+		<div id="payment-error" class="alert alert-danger" style="display: none; margin-top: 15px;"></div>
+	</form>
+
+	<div id="payment-processing" style="display: none; text-align: center; padding: 40px;">
+		<div style="margin: 0 auto 20px; width: 48px; height: 48px; border: 4px solid #f3f3f3; border-top: 4px solid #2490ef; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+		<h4>{{ _("Processing Payment...") }}</h4>
+		<p id="processing-message">{{ _("Please check your phone for a payment prompt.") }}</p>
+	</div>
+</div>
+
+<style>
+@keyframes spin {
+	0% { transform: rotate(0deg); }
+	100% { transform: rotate(360deg); }
+}
+</style>
+
+<script type="text/javascript">
+	{% include "templates/includes/pesepay_checkout.js" %}
+</script>
+{% endblock %}

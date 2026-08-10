@@ -1,0 +1,33 @@
+{% extends "templates/web.html" %}
+
+{% block title %}{{ _("Redirecting to PesePay") }}{% endblock %}
+
+{% block page_content %}
+<div class="pesepay-redirect-container" style="text-align: center; padding: 60px 20px;">
+	<div class="pesepay-spinner" style="margin: 0 auto 20px; width: 48px; height: 48px; border: 4px solid #f3f3f3; border-top: 4px solid #2490ef; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+	<h3>{{ _("Redirecting to PesePay...") }}</h3>
+	<p class="text-muted">{{ _("You will be redirected to complete your payment.") }}</p>
+	<p class="text-muted" style="margin-top: 10px;">
+		<small>{{ _("If you are not redirected automatically,") }}
+		<a href="{{ redirect_url }}">{{ _("click here") }}</a>.</small>
+	</p>
+</div>
+
+<style>
+@keyframes spin {
+	0% { transform: rotate(0deg); }
+	100% { transform: rotate(360deg); }
+}
+</style>
+
+<script>
+	document.addEventListener("DOMContentLoaded", function() {
+		var url = {{ (redirect_url or "") | tojson }};
+		if (url && (url.startsWith("http://") || url.startsWith("https://"))) {
+			setTimeout(function() {
+				window.location.href = url;
+			}, 1500);
+		}
+	});
+</script>
+{% endblock %}

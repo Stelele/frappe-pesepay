@@ -4,10 +4,11 @@ authors = [
     { name = "Gift Mugweni", email = "giftmugweni@gmail.com"}
 ]
 description = "A Pesepay gateway implementation allowing for Zimbabwean processing of Visa, Mastercard, Ecocash, InnBucks, Omari, etc"
-requires-python = ">=3.14"
+requires-python = "~=3.10"
 readme = "README.md"
 dynamic = ["version"]
 dependencies = [
+    "cryptography>=41.0.0",
     # "frappe~=16.0.0" # Installed and managed by bench.
 ]
 

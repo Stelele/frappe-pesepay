@@ -8,7 +8,7 @@ app_license = "mit"
 # Apps
 # ------------------
 
-# required_apps = []
+required_apps = ["frappe", "payments"]
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
@@ -30,7 +30,7 @@ app_license = "mit"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/pesepay/css/pesepay.css"
-# web_include_js = "/assets/pesepay/js/pesepay.js"
+# web_include_js = "/assets/pesepay/js/pesepay_checkout.js"
 
 # include custom scss in every website theme (without file extension ".scss")
 # website_theme_scss = "pesepay/public/scss/website"
@@ -86,12 +86,12 @@ app_license = "mit"
 # ------------
 
 # before_install = "pesepay.install.before_install"
-# after_install = "pesepay.install.after_install"
+after_install = "pesepay.installer.after_install"
 
 # Uninstallation
 # ------------
 
-# before_uninstall = "pesepay.uninstall.before_uninstall"
+before_uninstall = "pesepay.installer.before_uninstall"
 # after_uninstall = "pesepay.uninstall.after_uninstall"
 
 # Integration Setup
@@ -145,27 +145,16 @@ app_license = "mit"
 # 		"on_trash": "method"
 # 	}
 # }
+# doc_events to add if needed - keep commented for now
 
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"pesepay.tasks.all"
-# 	],
-# 	"daily": [
-# 		"pesepay.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"pesepay.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"pesepay.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"pesepay.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"all": [
+		"pesepay.pesepay.doctype.pesepay_settings.pesepay_settings.poll_pending_payments",
+	],
+}
 
 # Testing
 # -------
