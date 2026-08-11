@@ -5,7 +5,7 @@ import urllib.parse
 from typing import Any, Optional
 
 import frappe
-from frappe.integrations.utils import make_get_request, make_post_request
+from frappe.utils import get_request_session
 
 # ---------------------------------------------------------------------------
 # cryptography.hazmat  --  AES-256-CBC with PKCS7 padding
@@ -320,12 +320,18 @@ class PesePayConnector:
         """POST to *path* (relative to ``_base_url``) with envelope JSON."""
         url = urllib.parse.urljoin(self._base_url, path)
         try:
-            return make_post_request(
+            session = get_request_session()
+            response = session.post(
                 url,
                 headers=self._headers(),
                 data=json.dumps(data, separators=(",", ":"), default=str),
                 timeout=self._timeout,
             )
+            response.raise_for_status()
+            content_type = response.headers.get("content-type", "")
+            if content_type.startswith("application/") and content_type.split(";")[0].endswith("json"):
+                return response.json()
+            return {}
         except Exception as exc:
             raise PesePayException(f"POST {url} failed: {exc}") from exc
 
@@ -337,11 +343,17 @@ class PesePayConnector:
     def _get_url(self, url: str) -> dict[str, Any]:
         """GET an arbitrary absolute URL with auth headers."""
         try:
-            return make_get_request(
+            session = get_request_session()
+            response = session.get(
                 url,
                 headers=self._headers(),
                 timeout=self._timeout,
             )
+            response.raise_for_status()
+            content_type = response.headers.get("content-type", "")
+            if content_type.startswith("application/") and content_type.split(";")[0].endswith("json"):
+                return response.json()
+            return {}
         except Exception as exc:
             raise PesePayException(f"GET {url} failed: {exc}") from exc
 

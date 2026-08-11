@@ -276,10 +276,11 @@ def _process_payment_success(integration_request, settings, reference_number):
         # Try on_payment_authorized first (works for web forms, custom doctypes)
         ref_doc = frappe.get_doc(reference_doctype, reference_docname)
         custom_redirect = None
-        try:
-            custom_redirect = ref_doc.run_method("on_payment_authorized", "Completed")
-        except Exception:
-            frappe.log_error(frappe.get_traceback(), "PesePay on_payment_authorized")
+        if hasattr(ref_doc, "on_payment_authorized"):
+            try:
+                custom_redirect = ref_doc.run_method("on_payment_authorized", "Completed")
+            except Exception:
+                frappe.log_error(frappe.get_traceback(), "PesePay on_payment_authorized")
 
         # If ERPNext, try creating a Payment Entry for Payment Request
         if "erpnext" in frappe.get_installed_apps() and reference_doctype == "Payment Request":
@@ -413,6 +414,41 @@ def poll_payment_status(poll_url, gateway_name):
     except Exception:
         frappe.log_error(frappe.get_traceback(), "PesePay Poll Payment")
         return {}
+
+
+@frappe.whitelist()
+def poll_payment_reference(reference_number, gateway_name):
+    """Client-side polling by PesePay reference number (used when no poll_url).
+
+    Only resolves known PesePay payment gateways before hitting the API.
+    """
+    if not reference_number:
+        return {}
+    if not _is_known_pesepay_gateway(gateway_name):
+        frappe.response["http_status_code"] = 403
+        return {}
+
+    try:
+        gateway = frappe.get_doc("Payment Gateway", gateway_name)
+        settings = frappe.get_doc(gateway.gateway_settings, gateway.gateway_controller)
+
+        connector = PesePayConnector(
+            integration_key=settings.integration_key,
+            encryption_key=settings.get_password("encryption_key", raise_exception=False) or "",
+            use_sandbox=cint(settings.use_sandbox),
+        )
+
+        return connector.check_payment_status(reference_number)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "PesePay Poll Reference")
+        return {}
+
+
+def _is_known_pesepay_gateway(gateway_name):
+    if not gateway_name:
+        return False
+    settings = frappe.db.get_value("Payment Gateway", gateway_name, "gateway_settings")
+    return settings == "Pesepay Settings"
 
 
 def get_gateway_controller(doctype, docname, payment_gateway=None):

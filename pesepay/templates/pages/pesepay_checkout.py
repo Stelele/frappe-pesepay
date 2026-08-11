@@ -44,7 +44,7 @@ def make_seamless_payment(
     """Process a seamless (server-to-server) payment."""
     from payments.utils import get_payment_gateway_controller
 
-    if reference_doctype and reference_docname:
+    if reference_doctype and reference_docname and not amount:
         try:
             ref_doc = frappe.get_doc(reference_doctype, reference_docname)
             if hasattr(ref_doc, "grand_total"):
@@ -55,7 +55,11 @@ def make_seamless_payment(
             pass
 
     controller = get_payment_gateway_controller(gateway_name)
-    settings = frappe.get_doc("Pesepay Settings", controller)
+    settings = (
+        controller
+        if controller.doctype == "Pesepay Settings"
+        else frappe.get_doc("Pesepay Settings", controller)
+    )
 
     from pesepay.pesepay.doctype.pesepay_settings.pesepay_connector import PesePayConnector
 
@@ -133,6 +137,7 @@ def make_seamless_payment(
             "success": True,
             "is_paid": result.get("transactionStatus") == "SUCCESS",
             "reference_number": result.get("referenceNumber", ""),
+            "merchant_reference": merchant_ref,
             "poll_url": str(result.get("pollUrl", "")) if result.get("pollUrl") else None,
             "redirect_url": str(result.get("redirectUrl", "")) if result.get("redirectUrl") else None,
             "status": result.get("transactionStatus", ""),
