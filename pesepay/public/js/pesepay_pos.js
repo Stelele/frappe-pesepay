@@ -75,7 +75,7 @@ frappe.provide("pesepay.pos");
 			if (container.find(".pesepay-pay-button").length) return;
 
 			const $wrap = $(
-				`<div class="pesepay-pay-button-wrapper mt-2">
+				`<div class="pesepay-pay-button-wrapper mt-2" style="display: none;">
 					<button class="btn btn-primary btn-sm w-full pesepay-pay-button">
 						${__("Pay with Pesepay")}
 					</button>
@@ -83,6 +83,22 @@ frappe.provide("pesepay.pos");
 			);
 			$wrap.on("click", () => open_pesepay_dialog(frm));
 			container.append($wrap);
+			toggle_pesepay_button(frm);
+		});
+	}
+
+	function toggle_pesepay_button(frm) {
+		if (!window.cur_pos || !cur_pos.payment) return;
+
+		const container = $(cur_pos.payment.$component).find(".payment-container-left");
+		const $wrap = container.find(".pesepay-pay-button-wrapper");
+		if (!$wrap.length) return;
+
+		fetch_mode_map(frm.doc.company).then((mode_map) => {
+			const has_amount = (frm.doc.payments || []).some(
+				(p) => mode_map[p.mode_of_payment] && flt(p.amount) > 0
+			);
+			$wrap.toggle(has_amount);
 		});
 	}
 
@@ -161,12 +177,15 @@ frappe.provide("pesepay.pos");
 				{
 					fieldname: "payment_method",
 					label: __("Payment Method"),
-					fieldtype: "Select",
-					options: MOBILE_METHODS,
-					default: method,
-					reqd: 1,
+					fieldtype: "HTML",
 				},
-				{ fieldname: "phone_number", label: __("Phone Number"), fieldtype: "Data", reqd: 1 },
+				{
+					fieldname: "phone_number",
+					label: __("Phone Number"),
+					fieldtype: "Data",
+					reqd: 1,
+					onchange: () => update_pay_button(dlg),
+				},
 				{ fieldtype: "HTML", fieldname: "status_html" },
 			],
 			primary_action_label: resume.merchant_reference ? __("Continue") : __("Pay Now"),
@@ -174,11 +193,14 @@ frappe.provide("pesepay.pos");
 				if (resume.merchant_reference) {
 					resume_polling(frm, st, dlg, resume);
 				} else {
+					values.payment_method = dlg.pesepay_selected_method;
 					pay_now(frm, st, dlg, values);
 				}
 			},
 		});
 
+		dlg.pesepay_resume = !!resume.merchant_reference;
+		dlg.pesepay_selected_method = method;
 		state.active_dialog = dlg;
 		dlg.onhide = () => {
 			state.active_dialog = null;
@@ -188,8 +210,52 @@ frappe.provide("pesepay.pos");
 			`<div class="mb-2"><strong>${__("Amount")}:</strong> ${format_currency(st.amount, st.currency)}</div>`
 		);
 
+		render_method_buttons(dlg, method, (m) => {
+			dlg.pesepay_selected_method = m;
+			update_pay_button(dlg);
+		});
+
 		dlg.show();
+		update_pay_button(dlg);
 		return dlg;
+	}
+
+	function render_method_buttons(dlg, selected_method, on_select) {
+		const $wrapper = dlg.fields_dict.payment_method.$wrapper;
+		$wrapper.html(
+			`<div class="mb-2"><label class="control-label">${__("Payment Method")}</label>
+				<div class="pesepay-method-buttons d-flex">
+					${MOBILE_METHODS.map(
+						(m) =>
+							`<button type="button" class="btn btn-sm flex-fill pesepay-method-btn ${
+								m === selected_method ? "btn-primary" : "btn-default"
+							}" data-method="${m}">${__(m)}</button>`
+					).join("")}
+				</div>
+			</div>`
+		);
+
+		$wrapper.on("click", ".pesepay-method-btn", function () {
+			const $btn = $(this);
+			$wrapper
+				.find(".pesepay-method-btn")
+				.removeClass("btn-primary")
+				.addClass("btn-default");
+			$btn.removeClass("btn-default").addClass("btn-primary");
+			on_select($btn.attr("data-method"));
+		});
+	}
+
+	function update_pay_button(dlg) {
+		const btn = dlg.get_primary_btn();
+		if (!btn) return;
+		if (dlg.pesepay_busy) return;
+		if (dlg.pesepay_resume) {
+			btn.prop("disabled", false);
+			return;
+		}
+		const phone = (dlg.get_value("phone_number") || "").trim();
+		btn.prop("disabled", !(dlg.pesepay_selected_method && phone));
 	}
 
 	function guess_method(frm, st) {
@@ -212,8 +278,10 @@ frappe.provide("pesepay.pos");
 	function set_busy(dlg, busy, label) {
 		const btn = dlg.get_primary_btn();
 		if (!btn) return;
+		dlg.pesepay_busy = busy;
 		btn.html(label || (busy ? __("Processing...") : __("Pay Now")));
 		btn.prop("disabled", busy);
+		if (!busy) update_pay_button(dlg);
 	}
 
 	// ---------------------------------------------------------------------
@@ -347,4 +415,6 @@ frappe.provide("pesepay.pos");
 	["Sales Invoice", "POS Invoice"].forEach((doctype) => {
 		frappe.ui.form.on(doctype, "after_payment_render", (frm) => mount_pay_button(frm));
 	});
+
+	frappe.ui.form.on("Sales Invoice Payment", "amount", (frm) => toggle_pesepay_button(frm));
 })();
