@@ -24,6 +24,8 @@ class PesepaySettings(Document):
         call_hook_method("payment_gateway_enabled", gateway=gw)
         if not self.flags.ignore_mandatory:
             self._create_mode_of_payment()
+            self._create_gateway_accounts()
+            self._create_mode_of_payment_accounts()
 
     def get_payment_url(self, **kwargs):
         """Return the checkout URL for the PesePay redirect flow.
@@ -140,10 +142,82 @@ class PesepaySettings(Document):
                     "doctype": "Mode of Payment",
                     "mode_of_payment": mop_name,
                     "enabled": 1,
-                    "type": "General",
+                    "type": "Bank",
                 }).insert(ignore_permissions=True)
             except Exception:
                 frappe.log_error(frappe.get_traceback(), "Pesepay Mode of Payment creation failed")
+
+    def _get_companies(self):
+        """All companies on the site."""
+        return [row.name for row in frappe.get_all("Company", fields=["name"], order_by="name")]
+
+    def _find_pesepay_account(self, gateway, company):
+        """The PesePay bank account name for *company*, or None."""
+        return frappe.db.get_value(
+            "Account",
+            {"account_name": gateway, "company": company},
+            "name",
+        )
+
+    def _create_gateway_accounts(self):
+        """Create a Payment Gateway Account for every company on the site.
+
+        POS mode detection joins Mode of Payment Account -> Payment Gateway
+        Account -> Payment Gateway, so every company that should accept PesePay
+        needs its own Payment Gateway Account row. Without this, the Pay with
+        PesePay button silently never renders in POS for those companies.
+        """
+        if "erpnext" not in frappe.get_installed_apps():
+            return
+        from erpnext.accounts.utils import create_payment_gateway_account
+
+        gateway = f"Pesepay-{self.gateway_name}"
+        for company in self._get_companies():
+            try:
+                create_payment_gateway_account(
+                    gateway,
+                    payment_channel="Email",
+                    company=company,
+                )
+            except Exception:
+                frappe.log_error(
+                    frappe.get_traceback(),
+                    "Pesepay Payment Gateway Account creation failed",
+                )
+
+    def _create_mode_of_payment_accounts(self):
+        """Create a Mode of Payment Account row for every company that has a
+        PesePay bank account, defaulting to that company's PesePay account.
+
+        Without these rows the Mode of Payment can't be used in POS for the
+        company, so this removes the manual per-company setup step.
+        """
+        if "erpnext" not in frappe.get_installed_apps():
+            return
+        gateway = f"Pesepay-{self.gateway_name}"
+        if not frappe.db.exists("Mode of Payment", gateway):
+            return
+
+        mop = frappe.get_doc("Mode of Payment", gateway)
+        existing = {row.company for row in mop.accounts}
+        appended = False
+
+        for company in self._get_companies():
+            if company in existing:
+                continue
+            account = self._find_pesepay_account(gateway, company)
+            if not account:
+                continue
+            mop.append(
+                "accounts",
+                {
+                    "company": company,
+                    "default_account": account,
+                },
+            )
+            appended = True
+        if appended:
+            mop.save(ignore_permissions=True)
 
 
 # ── MODULE-LEVEL FUNCTIONS (whitelisted / scheduler) ──────────────────
