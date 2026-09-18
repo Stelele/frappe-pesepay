@@ -25,16 +25,16 @@ bench --site <site_name> install-app pesepay
 
 Go to **Pesepay Settings** (via the app menu or **Settings > Pesepay Settings**). This is a multi-instance DocType — one record per gateway (`autoname: field:gateway_name`).
 
-**Required fields:**
+**Fields (required/optional as defined in the DocType JSON):**
 
-| Field | Description |
-|-------|-------------|
-| **gateway_name** | Name identifying this gateway instance. Naming field (`autoname: field:gateway_name`). |
-| **integration_key** | Your PesePay Integration Key (user-supplied). |
-| **encryption_key** | Your PesePay Encryption Key (user-supplied, must be 32 UTF-8 bytes for AES-256). |
-| **use_sandbox** | Set to `1` for sandbox (`api.test.sandbox.pesepay.com`), `0` for production (`api.pesepay.com`). Default: `1`. |
-| **redirect_url** | Custom redirect URL for the redirect-based payment flow. |
-| **currency_map** | Child table mapping Frappe currencies to PesePay currencies (see below). |
+| Field | Required | Description |
+|-------|----------|-------------|
+| **gateway_name** | **Yes** | Name identifying this gateway instance. Naming field (`autoname: field:gateway_name`). |
+| **integration_key** | **Yes** | Your PesePay Integration Key (user-supplied). |
+| **encryption_key** | **Yes** | Your PesePay Encryption Key (user-supplied, must be 32 UTF-8 bytes for AES-256). |
+| **use_sandbox** | No | Set to `1` for sandbox (`api.test.sandbox.pesepay.com`), `0` for production (`api.pesepay.com`). Default: `1`. |
+| **redirect_url** | No | Custom redirect URL for the redirect-based payment flow. |
+| **currency_map** | No | Child table mapping Frappe currencies to PesePay currencies (see below). |
 
 **Currency Map child table:**
 
@@ -105,7 +105,7 @@ POST /api/method/pesepay.pesepay.doctype.pesepay_settings.pesepay_settings.callb
 
 1. Resolves the gateway settings from the `Payment Gateway` record
 2. Decrypts the payload using the PesePayConnector (integration_key + encryption_key)
-3. Matches the `referenceNumber` or `merchantReference` against existing Integration Requests
+3. Matches the `referenceNumber` (from the decrypted payload, falling back to the `reference` request arg) against the `reference_number` stored on existing Integration Requests
 4. Updates the Integration Request status to **Completed** (if SUCCESS) or **Failed**
 5. If payment is successful, calls `_process_payment_success()` which:
    - Runs `on_payment_authorized` on the reference doctype (if it exists)
@@ -118,7 +118,7 @@ POST /api/method/pesepay.pesepay.doctype.pesepay_settings.pesepay_settings.callb
 | **"Encryption key must produce exactly 32 UTF-8 bytes"** | Key bytes are not 32 (validation is byte-based: `len(key.encode("utf-8")) == 32`, and the first 16 characters must encode to exactly 16 IV bytes — non-ASCII characters can fail the IV check) | Generate a 32-character ASCII key. Verify `len(key.encode("utf-8")) == 32`. |
 | **Pay with PesePay button doesn't appear** | No payment row with a PesePay-mapped mode of payment, or company has no Payment Gateway Account | Ensure: (a) a payment row exists with a mode of payment that maps to a PesePay gateway, (b) the company has a Payment Gateway Account row created by the `on_update` hook, (c) the company has a Mode of Payment Account row. |
 | **Webhook not receiving data** | PesePay cannot reach your callback URL, or the payload is not encrypted | Verify your server can receive POST at `/api/method/pesepay.pesepay.doctype.pesepay_settings.pesepay_settings.callback`. Ensure the payload contains a `payload` field (base64-encrypted). |
-| **Polling times out (60 attempts / 180s)** | Payment not confirmed by PesePay within 3 minutes | This is the default max. Extend by modifying the `max_attempts` in `pesepay/public/js/pesepay_pos.js` or the scheduler in `pesepay_settings.py`. |
+| **Polling times out (60 attempts / 180s)** | Payment not confirmed by PesePay within 3 minutes | `max_attempts` (60) is the **client-side** polling limit in `pesepay/public/js/pesepay_pos.js` only — extend it there if needed. The server-side scheduler (`poll_pending_payments`) keeps polling Queued Integration Requests independently until they complete or fail. |
 | **Currency not supported** | Transaction currency not in `currency_map` and not USD/ZWL | Add the currency to the **Pesepay Settings > Currency Map** child table. |
 | **"Payment was declined"** | Gateway declined the transaction (insufficient funds, invalid card, etc.) | Ask the customer to use a different payment method or verify card details. |
 

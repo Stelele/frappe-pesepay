@@ -38,16 +38,16 @@ Go to **Pesepay Settings** (via the app menu or **Settings > Pesepay Settings**)
 
 > Note: installing the app creates only a bare **Mode of Payment** `Pesepay` (when ERPNext is present) — no Pesepay Settings record. Gateway-specific records (Payment Gateway, Gateway Accounts, per-gateway Mode of Payment) are auto-created when you save a Pesepay Settings record (`on_update`, see below).
 
-**Required fields (marked mandatory):**
+**Fields (required/optional as defined in the DocType JSON):**
 
-| Field | Type | Description |
-|-------|------|-------------|
-| **gateway_name** | Data | Name identifying this gateway instance. Auto-used as naming rule (`field:gateway_name`). |
-| **integration_key** | Data | Your PesePay Integration Key (user-supplied). |
-| **encryption_key** | Password | Your PesePay Encryption Key (user-supplied, must be 32 UTF-8 bytes for AES-256). |
-| **use_sandbox** | Check | Set to `1` for sandbox environment (`api.test.sandbox.pesepay.com`), `0` for production (`api.pesepay.com`). Default: `1`. |
-| **redirect_url** | Data | Custom redirect URL for the redirect-based payment flow. |
-| **currency_map** | Table | Child table mapping Frappe currencies to PesePay currencies (see below). |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| **gateway_name** | Data | **Yes** | Name identifying this gateway instance. Auto-used as naming rule (`field:gateway_name`). |
+| **integration_key** | Data | **Yes** | Your PesePay Integration Key (user-supplied). |
+| **encryption_key** | Password | **Yes** | Your PesePay Encryption Key (user-supplied, must be 32 UTF-8 bytes for AES-256). |
+| **use_sandbox** | Check | No | Set to `1` for sandbox environment (`api.test.sandbox.pesepay.com`), `0` for production (`api.pesepay.com`). Default: `1`. |
+| **redirect_url** | Data | No | Custom redirect URL for the redirect-based payment flow. |
+| **currency_map** | Table | No | Child table mapping Frappe currencies to PesePay currencies (see below). |
 
 **Currency Map child table:**
 
@@ -125,7 +125,7 @@ The webhook:
 
 1. Resolves the gateway settings from the `Payment Gateway` record
 2. Decrypts the payload using the PesePayConnector (integration_key + encryption_key)
-3. Matches the **referenceNumber** or **merchantReference** against existing Integration Requests
+3. Matches the **referenceNumber** (from the decrypted payload, falling back to the `reference` request arg) against the `reference_number` stored on existing Integration Requests
 4. Updates the Integration Request status to **Completed** (if SUCCESS) or **Failed**
 5. If payment is successful, calls `_process_payment_success()` which:
    - Runs `on_payment_authorized` on the reference doctype (if it exists)
@@ -140,8 +140,8 @@ The webhook:
 
 #### Scheduler
 
-- **`pesepay.pesepay.doctype.pesepay_settings.pesepay_settings.poll_pending_payments`** (full path) is registered under `scheduler_events.all` in `hooks.py` — runs roughly every few minutes, not every minute.
-- Polls Integration Requests in **Queued** status older than 60 seconds.
+- **`pesepay.pesepay.doctype.pesepay_settings.pesepay_settings.poll_pending_payments`** (full path) is registered under `scheduler_events.all` in `hooks.py` — runs every scheduler tick (240 s by default, configurable via `scheduler_tick_interval` in `common_site_config.json`), not every minute.
+- Polls Integration Requests in **Queued** status older than 60 seconds, up to **10 per run**.
 - Calls `connector.check_payment_status()` to check status (reference-number lookup only; the `poll_url` is ignored by the scheduler).
 - On **SUCCESS**: marks IR as **Completed** and calls `_process_payment_success()`.
 - On **FAILED**: marks IR as **Failed**.
@@ -183,7 +183,7 @@ Supported payment method/currency combinations (from `METHOD_CODES` in `pesepay_
 | **"Encryption key must produce exactly 32 UTF-8 bytes"** | Key does not encode to exactly 32 UTF-8 bytes (`len(key.encode("utf-8")) != 32`), or its first 16 characters don't encode to exactly 16 UTF-8 IV bytes | Generate an **ASCII** 32-character key. Verify `len(key.encode("utf-8")) == 32` and `len(key[:16].encode("utf-8")) == 16`. |
 | **Pay with PesePay button doesn't appear** | No payment row with a PesePay-mapped mode of payment, or company has no Payment Gateway Account | Ensure: (a) a payment row exists with a mode of payment that maps to a PesePay gateway, (b) the company has a Payment Gateway Account row created by the `on_update` hook, (c) the company has a Mode of Payment Account row. |
 | **Webhook not receiving data** | PesePay cannot reach your callback URL, or the payload is not encrypted | Verify your server can receive POST at `/api/method/pesepay.pesepay.doctype.pesepay_settings.pesepay_settings.callback`. Ensure the payload contains a `payload` field (base64-encrypted). |
-| **Polling times out (60 attempts / 180s)** | Payment not confirmed by PesePay within 3 minutes | This is the default max. Extend by modifying the `max_attempts` in `pesepay/public/js/pesepay_pos.js` or the scheduler in `pesepay_settings.py`. |
+| **Polling times out (60 attempts / 180s)** | Payment not confirmed by PesePay within 3 minutes | `max_attempts` (60) is the **client-side** polling limit in `pesepay/public/js/pesepay_pos.js` only — extend it there if needed. The server-side scheduler (`poll_pending_payments`) keeps polling Queued Integration Requests independently until they complete or fail. |
 | **Currency not supported** | Transaction currency not in `currency_map` and not USD/ZWL | Add the currency to the **Pesepay Settings > Currency Map** child table. |
 | **"Payment was declined"** | Gateway declined the transaction (insufficient funds, invalid card, etc.) | Ask the customer to use a different payment method or verify card details. |
 

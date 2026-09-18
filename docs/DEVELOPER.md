@@ -15,7 +15,7 @@ Core components:
 | **Business logic** | `pesepay/pesepay/doctype/pesepay_settings/pesepay_settings.py` | Document methods, validation, auto-setup hooks |
 | **Crypto + HTTP client** | `pesepay/pesepay/doctype/pesepay_settings/pesepay_connector.py` | AES-256-CBC encryption, API client, method code lookup |
 | **Webhook endpoint** | `pesepay/pesepay/doctype/pesepay_settings/pesepay_settings.py` `callback()` | `allow_guest=True`, decrypts payload, updates Integration Request |
-| **Scheduler** | `pesepay/pesepay/doctype/pesepay_settings/pesepay_settings.py` `poll_pending_payments()` | Registered under `scheduler_events.all` in `hooks.py` (≈ every few minutes), polls Queued IRs >60s old |
+| **Scheduler** | `pesepay/pesepay/doctype/pesepay_settings/pesepay_settings.py` `poll_pending_payments()` | Registered under `scheduler_events.all` in `hooks.py` (runs every scheduler tick — 240 s by default, configurable via `scheduler_tick_interval` in `common_site_config.json`), polls Queued IRs >60s old, up to 10 per run |
 | **Client JS** | `pesepay/public/js/pesepay_pos.js` | POS "Pay with PesePay" button, dialog, polling |
 | **Checkout page** | `templates/pages/pesepay_checkout.py` + `.html` | Seamless payment form (methods, phone/card fields) |
 | **Redirect page** | `templates/pages/pesepay_redirect.py` + `.html` | Redirect-initiation page, user redirected to PesePay |
@@ -55,10 +55,12 @@ Standalone table DocType with two fields:
 - Controller: points to `Pesepay Settings`
 - Created on `on_update` of Pesepay Settings
 
-### Integration Request (child of Pesepay Settings, tracked by service="Pesepay")
+### Integration Request (related DocType, associated with Pesepay via `service="Pesepay"`)
 
-- Stores payment data as JSON in `data` field
-- Status: Queued / Authorized / Completed / Failed
+A related **Integration Request** DocType (the standard Frappe integration doctype, created via `create_request_log(service_name="Pesepay")`) — **not** a child table of Pesepay Settings:
+
+- Stores payment data as JSON in the `data` field
+- Status: Queued/Authorized/Completed/Failed
 - Key fields in data: `reference_number`, `poll_url`, `payment_method`, `amount`, `currency`, `merchant_reference`
 
 ## Whitelisted APIs & Public Pages
@@ -82,7 +84,7 @@ Endpoints are either `/api/method/<module>.<method>` whitelisted methods or page
 def callback(**kwargs):
     gateway_name = kwargs.get("gateway") or frappe.request.args.get("gateway") or ""
     reference_number = kwargs.get("reference") or frappe.request.args.get("reference") or ""
-    # ... decrypts payload, matches referenceNumber/merchantReference, updates IR status
+    # ... decrypts payload, matches reference_number, updates IR status
 ```
 
 **`poll_payment_status(poll_url, gateway_name)`** — `pesepay/pesepay/doctype/pesepay_settings/pesepay_settings.py:451`
@@ -128,8 +130,8 @@ def make_seamless_payment(...):
 
 ```python
 def poll_pending_payments():
-    # Scheduler (scheduler_events.all in hooks.py): runs roughly every few minutes (not every minute),
-    # polls IRs Queued >60s old; calls connector.check_payment_status()
+    # Scheduler (scheduler_events.all in hooks.py): runs every scheduler tick (240 s by default),
+    # polls IRs Queued >60s old (up to 10 per run); calls connector.check_payment_status()
 ```
 
 ## Hooks (hooks.py)
@@ -139,7 +141,7 @@ def poll_pending_payments():
 | `after_install` | `pesepay/installer.py:5` | Requires the `payments` app; creates **only** a default Mode of Payment `Pesepay` (if ERPNext is installed). Does **not** create a Pesepay Settings doc. |
 | `before_uninstall` | `pesepay/installer.py:51` | Deletes Pesepay Settings, Payment Gateways, Integration Requests, Mode of Payment. |
 | `on_update` | `pesepay/pesepay/doctype/pesepay_settings/pesepay_settings.py:21` | Auto-creates Payment Gateway, Payment Gateway Accounts, Mode of Payment, Mode of Payment Accounts. |
-| **scheduler_events.all** | `hooks.py:148-152` | `pesepay.pesepay.doctype.pesepay_settings.pesepay_settings.poll_pending_payments` (full path) — runs roughly every few minutes. |
+| **scheduler_events.all** | `hooks.py:148-152` | `pesepay.pesepay.doctype.pesepay_settings.pesepay_settings.poll_pending_payments` (full path) — every scheduler tick (240 s by default, configurable via `scheduler_tick_interval`). |
 
 ## Webhook / Callback Handling (in detail)
 
@@ -162,8 +164,8 @@ def poll_pending_payments():
 
 ## Scheduler
 
-- **`pesepay.pesepay.doctype.pesepay_settings.pesepay_settings.poll_pending_payments`** (full path) runs roughly every few minutes (registered under `scheduler_events.all` in `hooks.py` — not every minute).
-- Polls Integration Requests in **Queued** status older than 60 seconds.
+- **`pesepay.pesepay.doctype.pesepay_settings.pesepay_settings.poll_pending_payments`** (full path) runs every scheduler tick (240 s by default, configurable via `scheduler_tick_interval`; registered under `scheduler_events.all` in `hooks.py`).
+- Polls Integration Requests in **Queued** status older than 60 seconds, up to 10 per run.
 - Calls `connector.check_payment_status()` to check status.
 - On **SUCCESS**: marks IR as **Completed** and calls `_process_payment_success()`.
 - On **FAILED**: marks IR as **Failed**.
@@ -210,7 +212,7 @@ bench --site <site_name> run-scheduler
 | **"Encryption key must produce exactly 32 UTF-8 bytes"** | Key doesn't encode to exactly 32 UTF-8 bytes, or its first 16 characters don't encode to exactly 16 UTF-8 IV bytes | Generate an **ASCII** 32-character key; verify `len(key.encode("utf-8")) == 32` and `len(key[:16].encode("utf-8")) == 16` |
 | **Pay with PesePay button doesn't appear** | No PesePay-mapped payment row, or no Gateway Account | Ensure payment row exists with mapped mode of payment; company has Payment Gateway Account (created by `on_update`) |
 | **Webhook not receiving data** | Callback URL unreachable, payload not encrypted | Verify server receives POST at the callback URL; payload must contain `payload` field (base64) |
-| **Polling times out (60 attempts / 180s)** | Payment not confirmed by PesePay within 3 minutes | Default max; extend by modifying `max_attempts` in `pesepay/public/js/pesepay_pos.js` or the scheduler |
+| **Polling times out (60 attempts / 180s)** | Payment not confirmed by PesePay within 3 minutes | Client-side limit only; extend by modifying `max_attempts` in `pesepay/public/js/pesepay_pos.js` |
 | **Currency not supported** | Currency not in `currency_map` and not USD/ZWL | Add currency to **Pesepay Settings > Currency Map** child table |
 | **"Payment was declined"** | Gateway declined (insufficient funds, invalid card) | Ask customer to use different payment method or verify card details |
 | **SSRF error on polling** | Poll URL points to disallowed host | Only `api.pesepay.com` and `api.test.sandbox.pesepay.com` are allowed |
@@ -222,7 +224,7 @@ The app uses AES-256-CBC, ported from the C# SDK:
 - **Encryption key**: string that must produce exactly 32 UTF-8 bytes (`len(key.encode("utf-8")) == 32`, byte-based — not character count)
 - **IV**: first 16 characters of the key string, UTF-8 encoded (not the first 16 bytes of key bytes — matches C# behaviour). Those 16 characters must encode to exactly 16 UTF-8 bytes: a 32-character key containing non-ASCII characters (multi-byte) passes the key check yet fails the IV check
 - **Padding**: PKCS7 (block size 128)
-- **Cipher**: `cryptography.hazmat.primitives.ciphers.aes.AES256`
+- **Cipher**: `cryptography.hazmat.primitives.ciphers.algorithms.AES256`
 - **Output**: base64-encoded ciphertext
 
 The `_AesCbcPayloadCrypto` class in `pesepay_connector.py:118` implements this exactly.
