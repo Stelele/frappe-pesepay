@@ -12,6 +12,12 @@ Pesepay enables Frappe/ERPNext sites to accept payments via the PesePay payments
 
 The app handles encryption, webhook callbacks, polling, and ERPNext integration (Mode of Payment, Payment Entries) automatically.
 
+### Screenshots
+
+Pesepay Settings (one record per gateway):
+
+![Pesepay Settings](docs/images/settings-form.png)
+
 ### Installation
 
 #### Via Bench CLI
