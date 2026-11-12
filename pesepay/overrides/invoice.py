@@ -2,7 +2,7 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import flt
+from frappe.utils import flt, fmt_money
 
 GATEWAY_SETTINGS_DOCTYPE = "Pesepay Settings"
 
@@ -146,6 +146,35 @@ def get_pesepay_payment_state(invoice_doctype, invoice_name):
 		"poll_url": str(pending_data.get("poll_url") or "") if pending else "",
 		"reference_number": str(pending_data.get("reference_number") or "") if pending else "",
 	}
+
+
+def validate_pesepay_payment_confirmed(doc, method=None):
+	"""before_submit hook: block submit while a PesePay payment row is unconfirmed.
+
+	POS lets the cashier type an amount on a PesePay mode of payment and press
+	"Complete Order" directly. The money only actually moves through the
+	"Pay with Pesepay" flow, which records a Completed Integration Request
+	against the invoice. Submitting with an uncovered PesePay row means the
+	invoice is marked paid in the books with no real payment behind it — refuse
+	it and point the cashier back to the payment flow.
+	"""
+	for entry in get_pesepay_payments(doc):
+		row = entry["row"]
+		gateway = entry["gateway_account"]["payment_gateway"]
+		amount = flt(row.get("amount"))
+		confirmed, data = _find_ir(doc.doctype, doc.name, ("Completed",), gateway)
+		if confirmed is None or flt(data.get("amount", 0)) < amount - 0.01:
+			frappe.throw(
+				_(
+					"Row {0}: {1} for {2} has not been collected in PesePay yet. Use the"
+					" 'Pay with Pesepay' button to collect the payment, or change the mode"
+					" of payment."
+				).format(
+					row.get("idx"),
+					fmt_money(amount, currency=doc.get("currency")),
+					row.get("mode_of_payment"),
+				)
+			)
 
 
 @frappe.whitelist()
