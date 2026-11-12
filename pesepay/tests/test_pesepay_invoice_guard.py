@@ -92,12 +92,15 @@ def _gateway_account_fixture(settings, company):
 			"gateway": frappe.db.get_value(
 				"Payment Gateway", GATEWAY, ["name", "gateway_settings"], as_dict=True
 			),
-			"company": frappe.db.get_value("Company", company, ["name", "company_name"], as_dict=True),
-			"pesepay_accounts": frappe.get_all(
-				"Account",
-				filters={"company": company, "account_name": ["like", "%Pesepay%"]},
-				fields=["name", "account_name", "account_type", "account_currency"],
+			"company": frappe.db.get_value(
+				"Company",
+				company,
+				["name", "company_name", "chart_of_accounts", "default_currency"],
+				as_dict=True,
 			),
+			"account_count": frappe.db.count("Account", {"company": company}),
+			"warehouse_types": frappe.get_all("Warehouse Type", pluck="name"),
+			"mop_exists": frappe.db.exists("Mode of Payment", GATEWAY),
 			"pgas": frappe.get_all(
 				"Payment Gateway Account",
 				filters={"company": company},
