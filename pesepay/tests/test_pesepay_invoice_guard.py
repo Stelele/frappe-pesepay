@@ -44,7 +44,8 @@ def _company_fixture():
 		return frappe.get_doc("Company", name)
 
 	if not frappe.db.exists("Warehouse Type", "Transit"):
-		frappe.get_doc({"doctype": "Warehouse Type", "warehouse_type": "Transit"}).insert(
+		# Warehouse Type is prompt-named: the name must be set explicitly.
+		frappe.get_doc({"doctype": "Warehouse Type", "warehouse_type": "Transit", "name": "Transit"}).insert(
 			ignore_permissions=True
 		)
 
