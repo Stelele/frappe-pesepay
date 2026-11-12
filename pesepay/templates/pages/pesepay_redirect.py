@@ -20,7 +20,6 @@ def get_context(context):
 
 	if status in ("Completed", "Failed"):
 		# Already processed — redirect to success/fail
-		ir = frappe.get_doc("Integration Request", token)
 		if status == "Completed":
 			frappe.local.flags.redirect_location = get_url("/payment-success")
 		else:

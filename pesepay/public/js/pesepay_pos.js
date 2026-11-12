@@ -211,9 +211,8 @@ frappe.provide("pesepay.pos");
 		};
 
 		dlg.fields_dict.amount_html.$wrapper.html(
-			`<div class="mb-2"><strong>${__("Amount")}:</strong> ${format_currency(
-				st.amount,
-				st.currency
+			`<div class="mb-2"><strong>${__("Amount")}:</strong> ${escape_html(
+				format_currency(st.amount, st.currency)
 			)}</div>`
 		);
 
@@ -279,6 +278,20 @@ frappe.provide("pesepay.pos");
 		return MOBILE_METHODS[0];
 	}
 
+	function escape_html(value) {
+		return String(value == null ? "" : value).replace(
+			/[&<>"']/g,
+			(ch) =>
+				({
+					"&": "&amp;",
+					"<": "&lt;",
+					">": "&gt;",
+					'"': "&quot;",
+					"'": "&#39;",
+				}[ch])
+		);
+	}
+
 	function set_status(dlg, html) {
 		dlg.fields_dict.status_html.$wrapper.html(
 			`<div class="small text-muted mt-2">${html}</div>`
@@ -327,9 +340,9 @@ frappe.provide("pesepay.pos");
 					set_busy(dlg, false);
 					set_status(
 						dlg,
-						`<span class="text-danger">${
+						`<span class="text-danger">${escape_html(
 							msg.error || __("Payment could not be initiated.")
-						}</span>`
+						)}</span>`
 					);
 					return;
 				}

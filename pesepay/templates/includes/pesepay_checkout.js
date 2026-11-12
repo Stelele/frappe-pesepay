@@ -1,18 +1,18 @@
 frappe.ready(function () {
-	var $form = $("#pesepay-seamless-form");
-	var $method = $("#payment-method");
-	var $phoneFields = $("#phone-fields");
-	var $cardFields = $("#card-fields");
-	var $submitBtn = $("#submit-btn");
-	var $error = $("#payment-error");
-	var $processing = $("#payment-processing");
-	var $processingMsg = $("#processing-message");
+	let $form = $("#pesepay-seamless-form");
+	let $method = $("#payment-method");
+	let $phoneFields = $("#phone-fields");
+	let $cardFields = $("#card-fields");
+	let $submitBtn = $("#submit-btn");
+	let $error = $("#payment-error");
+	let $processing = $("#payment-processing");
+	let $processingMsg = $("#processing-message");
 
-	var CARD_METHODS = ["Visa", "MasterCard", "Zimswitch"];
-	var MOBILE_METHODS = ["EcoCash", "InnBucks", "Omari", "PayGo"];
+	const CARD_METHODS = ["Visa", "MasterCard", "Zimswitch"];
+	const MOBILE_METHODS = ["EcoCash", "InnBucks", "Omari", "PayGo"];
 
 	$method.on("change", function () {
-		var val = $(this).val();
+		let val = $(this).val();
 		if (CARD_METHODS.indexOf(val) >= 0) {
 			$phoneFields.hide();
 			$cardFields.show();
@@ -34,7 +34,7 @@ frappe.ready(function () {
 		$error.hide();
 		$submitBtn.prop("disabled", true).text("Processing...");
 
-		var data = {};
+		const data = {};
 		$form.serializeArray().forEach(function (f) {
 			data[f.name] = f.value;
 		});
@@ -97,8 +97,8 @@ frappe.ready(function () {
 			return;
 		}
 
-		var attempts = 0;
-		var maxAttempts = 24;
+		let attempts = 0;
+		const maxAttempts = 24;
 
 		function poll() {
 			attempts++;
