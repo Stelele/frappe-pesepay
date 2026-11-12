@@ -19,7 +19,17 @@ SETTINGS_NAME = "Guard Test Co"
 GATEWAY = f"Pesepay-{SETTINGS_NAME}"
 COMPANY = "_Test Company"
 ROW_AMOUNT = 10
-REFERENCE = "TEST-PES-GUARD-0001"
+
+
+def _reference():
+	"""Unique invoice reference per call.
+
+	IntegrationTestCase only rolls back after the whole class (setUpClass
+	commits to avoid flakes), so test data persists across tests. Every test
+	gets its own reference so its Integration Requests can never collide with
+	another test's amount-matching queries.
+	"""
+	return "TEST-PES-GUARD-" + frappe.generate_hash(length=8)
 
 
 def _settings_fixture():
@@ -47,7 +57,7 @@ def _gateway_account_fixture(settings):
 	)
 
 
-def _integration_request(status, amount, currency=None):
+def _integration_request(status, amount, reference, currency=None):
 	data = {"amount": str(amount), "payment_gateway": GATEWAY}
 	if currency:
 		data["currency"] = currency
@@ -57,25 +67,24 @@ def _integration_request(status, amount, currency=None):
 			"integration_request_service": "Pesepay",
 			"status": status,
 			"reference_doctype": "Sales Invoice",
-			"reference_docname": REFERENCE,
+			"reference_docname": reference,
 			"data": json.dumps(data),
 		}
 	).insert(ignore_permissions=True, ignore_links=True)
 
 
-def _invoice(account, amount=ROW_AMOUNT, company=COMPANY):
+def _invoice(account, reference, amount=ROW_AMOUNT, company=COMPANY):
 	# A saved POS/Sales Invoice always has a name by the time before_submit runs;
 	# the guard only reads fields off the doc, so a named unsaved doc is enough.
-	doc = frappe.get_doc(
+	return frappe.get_doc(
 		{
 			"doctype": "Sales Invoice",
 			"company": company,
-			"name": REFERENCE,
+			"name": reference,
 			"currency": "USD",
 			"payments": [{"mode_of_payment": GATEWAY, "account": account, "amount": amount}],
 		}
 	)
-	return doc
 
 
 class TestPesepaySubmitGuard(IntegrationTestCase):
@@ -87,35 +96,58 @@ class TestPesepaySubmitGuard(IntegrationTestCase):
 		if not cls.pga:
 			raise RuntimeError("fixture failed: no Payment Gateway Account for _Test Company")
 
+	def setUp(self):
+		super().setUp()
+		self.reference = _reference()
+
 	def test_submit_blocked_without_completed_pesepay_payment(self):
 		from pesepay.overrides.invoice import validate_pesepay_payment_confirmed
 
-		doc = _invoice(self.pga.payment_account)
+		doc = _invoice(self.pga.payment_account, self.reference)
 		with self.assertRaises(frappe.ValidationError):
 			validate_pesepay_payment_confirmed(doc)
 
 	def test_submit_allowed_when_completed_payment_covers_row(self):
 		from pesepay.overrides.invoice import validate_pesepay_payment_confirmed
 
-		_integration_request("Completed", ROW_AMOUNT)
-		doc = _invoice(self.pga.payment_account)
+		_integration_request("Completed", ROW_AMOUNT, self.reference)
+		doc = _invoice(self.pga.payment_account, self.reference)
 		validate_pesepay_payment_confirmed(doc)  # must not raise
 
 	def test_submit_blocked_when_completed_payment_amount_too_low(self):
 		from pesepay.overrides.invoice import validate_pesepay_payment_confirmed
 
-		_integration_request("Completed", ROW_AMOUNT / 2)
-		doc = _invoice(self.pga.payment_account)
+		_integration_request("Completed", ROW_AMOUNT / 2, self.reference)
+		doc = _invoice(self.pga.payment_account, self.reference)
 		with self.assertRaises(frappe.ValidationError):
 			validate_pesepay_payment_confirmed(doc)
 
 	def test_submit_blocked_when_completed_payment_in_different_currency(self):
 		from pesepay.overrides.invoice import validate_pesepay_payment_confirmed
 
-		_integration_request("Completed", ROW_AMOUNT, currency="ZWL")
-		doc = _invoice(self.pga.payment_account)  # invoice currency is USD
+		_integration_request("Completed", ROW_AMOUNT, self.reference, currency="ZWL")
+		doc = _invoice(self.pga.payment_account, self.reference)  # invoice currency is USD
 		with self.assertRaises(frappe.ValidationError):
 			validate_pesepay_payment_confirmed(doc)
+
+	def test_blocked_when_second_row_is_not_backed_by_a_payment(self):
+		from pesepay.overrides.invoice import validate_pesepay_payment_confirmed
+
+		# Two rows on the same gateway, only the first is paid.
+		doc = _invoice(self.pga.payment_account, self.reference)
+		doc.payments.append({"mode_of_payment": GATEWAY, "account": self.pga.payment_account, "amount": 5})
+		_integration_request("Completed", ROW_AMOUNT, self.reference)
+		with self.assertRaises(frappe.ValidationError):
+			validate_pesepay_payment_confirmed(doc)
+
+	def test_allowed_when_payments_cover_all_rows_on_a_gateway(self):
+		from pesepay.overrides.invoice import validate_pesepay_payment_confirmed
+
+		doc = _invoice(self.pga.payment_account, self.reference)
+		doc.payments.append({"mode_of_payment": GATEWAY, "account": self.pga.payment_account, "amount": 5})
+		_integration_request("Completed", ROW_AMOUNT, self.reference)
+		_integration_request("Completed", 5, self.reference)
+		validate_pesepay_payment_confirmed(doc)  # must not raise
 
 	def test_ignores_payment_rows_not_mapped_to_pesepay(self):
 		from pesepay.overrides.invoice import validate_pesepay_payment_confirmed
@@ -123,7 +155,7 @@ class TestPesepaySubmitGuard(IntegrationTestCase):
 		cash = frappe.db.get_value("Account", {"company": COMPANY, "account_name": "Cash"}, "name")
 		if not cash:
 			self.skipTest("no Cash account in _Test Company")
-		doc = _invoice(cash)
+		doc = _invoice(cash, self.reference)
 		validate_pesepay_payment_confirmed(doc)  # must not raise
 
 	def test_doc_events_wiring(self):
