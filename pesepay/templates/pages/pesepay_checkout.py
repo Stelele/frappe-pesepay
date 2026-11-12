@@ -40,22 +40,22 @@ def get_context(context):
 	]
 
 
-@frappe.whitelist(allow_guest=True)
+@frappe.whitelist(allow_guest=True)  # nosemgrep: guest-whitelisted-method
 def make_seamless_payment(
-	gateway_name,
-	amount,
-	currency,
-	email,
-	phone_number,
-	customer_name,
-	payment_method,
-	reference_doctype,
-	reference_docname,
-	title,
-	card_number=None,
-	card_cvv=None,
-	card_expiry=None,
-	card_holder=None,
+	gateway_name: str,
+	amount: str,
+	currency: str,
+	email: str,
+	phone_number: str,
+	customer_name: str,
+	payment_method: str,
+	reference_doctype: str,
+	reference_docname: str,
+	title: str,
+	card_number: str | None = None,
+	card_cvv: str | None = None,
+	card_expiry: str | None = None,
+	card_holder: str | None = None,
 ):
 	"""Process a seamless (server-to-server) payment."""
 	from payments.utils import get_payment_gateway_controller

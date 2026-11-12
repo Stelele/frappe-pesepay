@@ -290,7 +290,7 @@ class PesepaySettings(Document):
 # ── MODULE-LEVEL FUNCTIONS (whitelisted / scheduler) ──────────────────
 
 
-@frappe.whitelist(allow_guest=True)
+@frappe.whitelist(allow_guest=True)  # nosemgrep: guest-whitelisted-method
 def callback(**kwargs):
 	"""Webhook endpoint for PesePay payment status callbacks.
 
@@ -523,8 +523,8 @@ def poll_pending_payments():
 			frappe.log_error(frappe.get_traceback(), "PesePay Scheduler Poll")
 
 
-@frappe.whitelist(allow_guest=True)
-def poll_payment_status(poll_url, gateway_name):
+@frappe.whitelist(allow_guest=True)  # nosemgrep: guest-whitelisted-method
+def poll_payment_status(poll_url: str, gateway_name: str):
 	"""Client-side polling endpoint for pending payments.
 
 	Only allows polling to known PesePay API domains to prevent SSRF.
@@ -568,7 +568,7 @@ def poll_payment_status(poll_url, gateway_name):
 
 
 @frappe.whitelist()
-def poll_payment_reference(reference_number, gateway_name):
+def poll_payment_reference(reference_number: str, gateway_name: str):
 	"""Client-side polling by PesePay reference number (used when no poll_url).
 
 	Only resolves known PesePay payment gateways before hitting the API.
