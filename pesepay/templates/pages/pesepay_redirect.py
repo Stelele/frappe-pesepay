@@ -92,6 +92,8 @@ def get_context(context):
 			)
 			raise frappe.Redirect
 
+	except frappe.Redirect:
+		raise
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "PesePay Redirect Initiation")
 		# Leave IR as Queued so user can retry

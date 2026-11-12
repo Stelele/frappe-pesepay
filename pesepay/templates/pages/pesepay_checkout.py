@@ -80,6 +80,9 @@ def make_seamless_payment(
 		except frappe.DoesNotExistError:
 			pass
 
+	if not amount:
+		frappe.throw(_("Could not determine the payment amount. Please go back and try the payment again."))
+
 	controller = get_payment_gateway_controller(gateway_name)
 	settings = (
 		controller
