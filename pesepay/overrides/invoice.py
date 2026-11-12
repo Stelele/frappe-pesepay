@@ -55,6 +55,30 @@ def _ir_data(ir):
 	return data or {}
 
 
+def _find_completed_irs(invoice_doctype, invoice_name, payment_gateway):
+	"""All Completed PesePay Integration Requests for an invoice + gateway."""
+	filters = {
+		"integration_request_service": "Pesepay",
+		"reference_doctype": invoice_doctype,
+		"reference_docname": invoice_name,
+		"status": "Completed",
+	}
+	iris = frappe.get_all(
+		"Integration Request",
+		filters=filters,
+		fields=["name", "data"],
+		order_by="creation asc",
+		limit=100,
+	)
+	out = []
+	for ir in iris:
+		data = _ir_data(ir)
+		if payment_gateway and data.get("payment_gateway") != payment_gateway:
+			continue
+		out.append(data)
+	return out
+
+
 def _find_ir(invoice_doctype, invoice_name, statuses, payment_gateway=None):
 	"""Most recent PesePay Integration Request for an invoice that matches *statuses*."""
 	filters = {
@@ -147,37 +171,42 @@ def get_pesepay_payment_state(invoice_doctype, invoice_name):
 
 
 def validate_pesepay_payment_confirmed(doc, method=None):
-	"""before_submit hook: block submit while a PesePay payment row is unconfirmed.
+	"""before_submit hook: block submit while PesePay payment rows are unconfirmed.
 
 	POS lets the cashier type an amount on a PesePay mode of payment and press
 	"Complete Order" directly. The money only actually moves through the
-	"Pay with Pesepay" flow, which records a Completed Integration Request
-	against the invoice. Submitting with an uncovered PesePay row means the
-	invoice is marked paid in the books with no real payment behind it — refuse
-	it and point the cashier back to the payment flow.
+	"Pay with Pesepay" flow, which records Completed Integration Requests
+	against the invoice. Submitting with rows not covered by completed requests
+	means the invoice is marked paid in the books with no real payment behind
+	it — refuse it and point the cashier back to the payment flow.
+
+	Integration Requests don't record which payment row they pay for, so rows
+	are grouped by gateway and each group's row total must be covered by the
+	sum of that gateway's completed (currency-matching) requests.
 	"""
+	rows_by_gateway = {}
 	for entry in get_pesepay_payments(doc):
-		row = entry["row"]
 		gateway = entry["gateway_account"]["payment_gateway"]
-		amount = flt(row.get("amount"))
-		confirmed, data = _find_ir(doc.doctype, doc.name, ("Completed",), gateway)
-		# Currency is tolerated as missing for older requests recorded before
-		# the field was tracked in the request payload.
-		if (
-			confirmed is None
-			or data.get("currency") not in (None, doc.get("currency"))
-			or flt(data.get("amount", 0)) < amount - 0.01
-		):
+		rows_by_gateway.setdefault(gateway, []).append(entry["row"])
+
+	for gateway, rows in rows_by_gateway.items():
+		row_total = sum(flt(row.get("amount")) for row in rows)
+
+		confirmed_total = 0
+		for data in _find_completed_irs(doc.doctype, doc.name, gateway):
+			# Currency is tolerated as missing for older requests recorded
+			# before the field was tracked in the request payload.
+			if data.get("currency") not in (None, doc.get("currency")):
+				continue
+			confirmed_total += flt(data.get("amount", 0))
+
+		if confirmed_total < row_total - 0.01:
 			frappe.throw(
 				_(
-					"Row {0}: {1} for {2} has not been collected in PesePay yet. Use the"
-					" 'Pay with Pesepay' button to collect the payment, or change the mode"
-					" of payment."
-				).format(
-					row.get("idx"),
-					fmt_money(amount, currency=doc.get("currency")),
-					row.get("mode_of_payment"),
-				)
+					"{0} for {1} has not been collected in PesePay yet. Use the"
+					" 'Pay with Pesepay' button to collect the payment, or change"
+					" the mode of payment."
+				).format(fmt_money(row_total, currency=doc.get("currency")), gateway)
 			)
 
 
