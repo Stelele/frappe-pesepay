@@ -78,12 +78,52 @@ def _settings_fixture():
 
 def _gateway_account_fixture(settings, company):
 	"""The Payment Gateway Account the guard should resolve for *company*."""
-	return frappe.db.get_value(
+	pga = frappe.db.get_value(
 		"Payment Gateway Account",
 		{"payment_gateway": GATEWAY, "company": company},
 		["name", "payment_account"],
 		as_dict=True,
 	)
+	if not pga:
+		diagnostics = {
+			"settings": frappe.db.get_value(
+				"Pesepay Settings", SETTINGS_NAME, ["name", "gateway_name"], as_dict=True
+			),
+			"gateway": frappe.db.get_value(
+				"Payment Gateway", GATEWAY, ["name", "gateway_settings"], as_dict=True
+			),
+			"company": frappe.db.get_value("Company", company, ["name", "company_name"], as_dict=True),
+			"pesepay_accounts": frappe.get_all(
+				"Account",
+				filters={"company": company, "account_name": ["like", "%Pesepay%"]},
+				fields=["name", "account_name", "account_type", "account_currency"],
+			),
+			"pgas": frappe.get_all(
+				"Payment Gateway Account",
+				filters={"company": company},
+				fields=["name", "payment_gateway", "payment_account", "currency"],
+			),
+			"mop_rows": frappe.get_all(
+				"Mode of Payment Account",
+				filters={"parent": GATEWAY, "company": company},
+				fields=["company", "default_account"],
+			),
+			"error_logs": [
+				frappe.get_doc("Error Log", log.name).error[:1500]
+				for log in frappe.get_all(
+					"Error Log",
+					filters={"method": ("like", "%Pesepay%")},
+					order_by="creation desc",
+					limit=3,
+					as_list=False,
+				)
+			],
+		}
+		raise RuntimeError(
+			"fixture failed: no Payment Gateway Account for the test company\n"
+			+ json.dumps(diagnostics, indent=1, default=str)
+		)
+	return pga
 
 
 def _integration_request(status, amount, reference, currency=None):
