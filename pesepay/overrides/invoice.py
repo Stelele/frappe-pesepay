@@ -50,7 +50,7 @@ def get_pesepay_payments(doc):
 def _ir_data(ir):
 	try:
 		data = json.loads(ir.get("data")) if isinstance(ir.get("data"), str) else (ir.get("data") or {})
-	except json.JSONDecodeError, TypeError:
+	except (json.JSONDecodeError, TypeError):
 		data = {}
 	return data or {}
 
@@ -216,6 +216,10 @@ def mark_pesepay_payment_confirmed(ir_name):
 
 	Called by the POS client once the gateway reports SUCCESS. Only touches the
 	payment log, never the invoice document itself.
+
+	Restricted to users with submit permission on the referenced invoice —
+	setting this status is what lets the submit guard accept the payment, so
+	whoever can call it effectively confirms money was collected.
 	"""
 	if not ir_name:
 		return {"ok": False}
@@ -223,6 +227,9 @@ def mark_pesepay_payment_confirmed(ir_name):
 	ir = frappe.get_doc("Integration Request", ir_name)
 	if ir.integration_request_service != "Pesepay":
 		return {"ok": False}
+
+	if ir.reference_doctype:
+		frappe.has_permission(ir.reference_doctype, "submit", throw=True)
 
 	if ir.status != "Completed":
 		ir.db_set("status", "Completed", update_modified=True)

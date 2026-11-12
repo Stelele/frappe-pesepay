@@ -169,6 +169,39 @@ class TestPesepaySubmitGuard(IntegrationTestCase):
 			"pesepay.overrides.company.setup_pesepay_for_company",
 		)
 
+	def test_mark_confirmed_requires_invoice_submit_permission(self):
+		from pesepay.overrides.invoice import mark_pesepay_payment_confirmed
+
+		_integration_request("Completed", ROW_AMOUNT, self.reference)
+		ir_name = frappe.db.get_value(
+			"Integration Request",
+			{"reference_docname": self.reference},
+			"name",
+			order_by="creation desc",
+		)
+
+		# A user with no roles must not be able to mark payments as collected.
+		email = "pesepay-guard-test-user@example.com"
+		if not frappe.db.exists("User", email):
+			frappe.get_doc(
+				{
+					"doctype": "User",
+					"email": email,
+					"first_name": "Pesepay Guard",
+					"send_welcome_email": 0,
+				}
+			).insert(ignore_permissions=True)
+		frappe.set_user(email)
+		try:
+			with self.assertRaises(frappe.PermissionError):
+				mark_pesepay_payment_confirmed(ir_name)
+		finally:
+			frappe.set_user("Administrator")
+
+		# The POS cashier (submit permission on the invoice) may.
+		mark_pesepay_payment_confirmed(ir_name)
+		self.assertEqual(frappe.db.get_value("Integration Request", ir_name, "status"), "Completed")
+
 
 class TestPesepayCompanySetup(IntegrationTestCase):
 	@classmethod
