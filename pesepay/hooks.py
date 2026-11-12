@@ -47,6 +47,25 @@ doctype_js = {
 	"Sales Invoice": "public/js/pesepay_pos.js",
 	"POS Invoice": "public/js/pesepay_pos.js",
 }
+
+# DocType Events
+# ------------------
+
+doc_events = {
+	"POS Invoice": {
+		"before_submit": "pesepay.overrides.invoice.validate_pesepay_payment_confirmed",
+	},
+	"Sales Invoice": {
+		"before_submit": "pesepay.overrides.invoice.validate_pesepay_payment_confirmed",
+	},
+	# Provision gateway accounts / mode of payment rows for companies created
+	# after Pesepay was configured, so the POS button works without manual setup.
+	# on_update + in_insert (not after_insert) because the chart of accounts the
+	# provisioning needs is only created by Company.on_update.
+	"Company": {
+		"on_update": "pesepay.overrides.company.setup_pesepay_for_company",
+	},
+}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}

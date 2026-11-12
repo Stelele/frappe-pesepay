@@ -166,24 +166,84 @@ class PesepaySettings(Document):
         Account -> Payment Gateway, so every company that should accept PesePay
         needs its own Payment Gateway Account row. Without this, the Pay with
         PesePay button silently never renders in POS for those companies.
+
+        Existence is checked per company. ERPNext's shared helper
+        (`create_payment_gateway_account`) de-duplicates by gateway + currency
+        only, so it silently skips every company after the first — which is how
+        companies set up later end up without an account.
         """
         if "erpnext" not in frappe.get_installed_apps():
             return
-        from erpnext.accounts.utils import create_payment_gateway_account
-
         gateway = f"Pesepay-{self.gateway_name}"
         for company in self._get_companies():
             try:
-                create_payment_gateway_account(
-                    gateway,
-                    payment_channel="Email",
-                    company=company,
-                )
+                self._create_gateway_account(gateway, company)
             except Exception:
                 frappe.log_error(
                     frappe.get_traceback(),
                     "Pesepay Payment Gateway Account creation failed",
                 )
+
+    def _create_gateway_account(self, gateway, company):
+        """Ensure a Payment Gateway Account exists for one gateway + company."""
+        from erpnext.accounts.doctype.account.account import get_root_company
+        from erpnext.setup.setup_wizard.operations.install_fixtures import create_bank_account
+
+        bank_account = self._find_pesepay_account(gateway, company) or self._find_pesepay_account(
+            _(gateway), company
+        )
+
+        if not bank_account:
+            # Child companies must get new accounts via their root company
+            # (ERPNext then syncs the account down to the child automatically).
+            root = get_root_company(company)
+            account_doc = create_bank_account(
+                {"company_name": root[0] if root else company, "bank_account": gateway}
+            )
+            if not account_doc:
+                frappe.msgprint(
+                    _("Payment Gateway Account not created for {0}, please create one manually.").format(
+                        frappe.bold(company)
+                    )
+                )
+                return
+            if root:
+                bank_account = self._find_pesepay_account(gateway, company) or self._find_pesepay_account(
+                    _(gateway), company
+                )
+            else:
+                bank_account = account_doc.name
+
+        if not bank_account:
+            frappe.msgprint(
+                _("Payment Gateway Account not created for {0}, please create one manually.").format(
+                    frappe.bold(company)
+                )
+            )
+            return
+
+        currency = frappe.db.get_value("Account", bank_account, "account_currency")
+        if frappe.db.exists(
+            "Payment Gateway Account",
+            {"payment_gateway": gateway, "company": company, "currency": currency},
+        ):
+            return
+
+        try:
+            frappe.get_doc(
+                {
+                    "doctype": "Payment Gateway Account",
+                    "is_default": 1,
+                    "payment_gateway": gateway,
+                    "payment_account": bank_account,
+                    "currency": currency,
+                    "payment_channel": "Email",
+                    "company": company,
+                }
+            ).insert(ignore_permissions=True, ignore_if_duplicate=True)
+        except frappe.DuplicateEntryError:
+            # already exists, due to a reinstall?
+            pass
 
     def _create_mode_of_payment_accounts(self):
         """Create a Mode of Payment Account row for every company that has a
