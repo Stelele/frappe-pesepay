@@ -68,7 +68,6 @@ def _find_completed_irs(invoice_doctype, invoice_name, payment_gateway):
 		filters=filters,
 		fields=["name", "data"],
 		order_by="creation asc",
-		limit=100,
 	)
 	out = []
 	for ir in iris:
@@ -219,7 +218,8 @@ def mark_pesepay_payment_confirmed(ir_name):
 
 	Restricted to users with submit permission on the referenced invoice —
 	setting this status is what lets the submit guard accept the payment, so
-	whoever can call it effectively confirms money was collected.
+	whoever can call it effectively confirms money was collected. Requests
+	without a referenced invoice prove nothing and are refused outright.
 	"""
 	if not ir_name:
 		return {"ok": False}
@@ -228,7 +228,14 @@ def mark_pesepay_payment_confirmed(ir_name):
 	if ir.integration_request_service != "Pesepay":
 		return {"ok": False}
 
-	if ir.reference_doctype:
+	if not ir.reference_doctype or not ir.reference_docname:
+		return {"ok": False}
+
+	# Document-level permission when the invoice exists (the real flow);
+	# doctype-level otherwise, so legacy references still require a cashier.
+	if frappe.db.exists(ir.reference_doctype, ir.reference_docname):
+		frappe.has_permission(ir.reference_doctype, "submit", doc=ir.reference_docname, throw=True)
+	else:
 		frappe.has_permission(ir.reference_doctype, "submit", throw=True)
 
 	if ir.status != "Completed":

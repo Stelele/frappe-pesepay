@@ -202,6 +202,22 @@ class TestPesepaySubmitGuard(IntegrationTestCase):
 		mark_pesepay_payment_confirmed(ir_name)
 		self.assertEqual(frappe.db.get_value("Integration Request", ir_name, "status"), "Completed")
 
+	def test_blank_reference_requests_cannot_be_confirmed(self):
+		"""Requests with no referenced invoice prove nothing — refuse them."""
+		from pesepay.overrides.invoice import mark_pesepay_payment_confirmed
+
+		ir = frappe.get_doc(
+			{
+				"doctype": "Integration Request",
+				"integration_request_service": "Pesepay",
+				"status": "Queued",
+				"data": json.dumps({"amount": str(ROW_AMOUNT), "payment_gateway": GATEWAY}),
+			}
+		).insert(ignore_permissions=True, ignore_links=True)
+
+		self.assertEqual(mark_pesepay_payment_confirmed(ir.name)["ok"], False)
+		self.assertEqual(frappe.db.get_value("Integration Request", ir.name, "status"), "Queued")
+
 
 class TestPesepayCompanySetup(IntegrationTestCase):
 	@classmethod
