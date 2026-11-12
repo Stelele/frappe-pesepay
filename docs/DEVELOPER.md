@@ -82,9 +82,9 @@ Endpoints are either `/api/method/<module>.<method>` whitelisted methods or page
 ```python
 @frappe.whitelist(allow_guest=True)
 def callback(**kwargs):
-    gateway_name = kwargs.get("gateway") or frappe.request.args.get("gateway") or ""
-    reference_number = kwargs.get("reference") or frappe.request.args.get("reference") or ""
-    # ... decrypts payload, matches reference_number, updates IR status
+	gateway_name = kwargs.get("gateway") or frappe.request.args.get("gateway") or ""
+	reference_number = kwargs.get("reference") or frappe.request.args.get("reference") or ""
+	# ... decrypts payload, matches reference_number, updates IR status
 ```
 
 **`poll_payment_status(poll_url, gateway_name)`** — `pesepay/pesepay/doctype/pesepay_settings/pesepay_settings.py:451`
