@@ -276,7 +276,10 @@ def abandon_pesepay_payment(ir_name: str | None = None):
 	if not ir_name:
 		return {"ok": False}
 
-	ir = frappe.get_doc("Integration Request", ir_name)
+	# Lock the row for the whole check-then-act: the scheduler or the confirm
+	# endpoint may flip the status concurrently, and this write must never
+	# overwrite a 'Completed' (money moved).
+	ir = frappe.get_doc("Integration Request", ir_name, for_update=True)
 	if ir.integration_request_service != "Pesepay":
 		return {"ok": False}
 

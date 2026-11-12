@@ -4,7 +4,9 @@ frappe.provide("pesepay.pos");
 	const MOBILE_METHODS = ["EcoCash", "InnBucks", "Omari"];
 
 	// Pesepay statuses that mean the payment is definitively NOT going to be
-	// paid (mirror of pesepay.overrides.invoice.TERMINAL_NOT_PAID_STATUSES).
+	// paid (mirror of pesepay.overrides.invoice.TERMINAL_NOT_PAID_STATUSES —
+	// the server list is authoritative; if they ever drift the server still
+	// marks the request dead and the next dialog open stops resuming it).
 	// Everything else except SUCCESS is still in flight — keep polling.
 	const TERMINAL_NOT_PAID_STATUSES = [
 		"FAILED",
