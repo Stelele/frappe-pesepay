@@ -22,6 +22,9 @@ def setup_pesepay_for_company(doc, method=None):
 	if "erpnext" not in frappe.get_installed_apps():
 		return
 
+	frappe.logger("pesepay-hook").info(
+		f"provisioning start company={doc.name} accounts={frappe.db.count('Account', {'company': doc.name})}"
+	)
 	for name in frappe.get_all("Pesepay Settings", pluck="name"):
 		try:
 			settings = frappe.get_doc("Pesepay Settings", name)
@@ -33,3 +36,6 @@ def setup_pesepay_for_company(doc, method=None):
 				frappe.get_traceback(),
 				_("Pesepay setup for new company failed"),
 			)
+	frappe.logger("pesepay-hook").info(
+		f"provisioning end company={doc.name} pgas={frappe.db.count('Payment Gateway Account', {'company': doc.name})}"
+	)
