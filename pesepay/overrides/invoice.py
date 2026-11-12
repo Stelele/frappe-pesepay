@@ -102,7 +102,7 @@ def _find_ir(invoice_doctype, invoice_name, statuses, payment_gateway=None):
 
 
 @frappe.whitelist()
-def get_pos_pesepay_mode_names(company=None):
+def get_pos_pesepay_mode_names(company: str | None = None):
 	"""Mode of Payment names (and their gateways) mapped to PesePay on *company*."""
 	if not company:
 		company = frappe.defaults.get_user_default("company")
@@ -124,7 +124,7 @@ def get_pos_pesepay_mode_names(company=None):
 
 
 @frappe.whitelist()
-def get_pesepay_payment_state(invoice_doctype, invoice_name):
+def get_pesepay_payment_state(invoice_doctype: str, invoice_name: str):
 	"""State of the PesePay payment for a POS draft invoice.
 
 	Used by the POS client to decide whether to start a new payment,
@@ -210,7 +210,7 @@ def validate_pesepay_payment_confirmed(doc, method=None):
 
 
 @frappe.whitelist()
-def mark_pesepay_payment_confirmed(ir_name):
+def mark_pesepay_payment_confirmed(ir_name: str | None = None):
 	"""Idempotently mark a PesePay Integration Request as Completed.
 
 	Called by the POS client once the gateway reports SUCCESS. Only touches the
