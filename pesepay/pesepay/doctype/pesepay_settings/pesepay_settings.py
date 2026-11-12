@@ -454,6 +454,7 @@ def poll_pending_payments():
 	"""
 	from datetime import timedelta
 
+	from pesepay.overrides.invoice import TERMINAL_NOT_PAID_STATUSES
 	from pesepay.pesepay.doctype.pesepay_settings.pesepay_connector import PesePayConnector
 
 	try:
@@ -516,7 +517,7 @@ def poll_pending_payments():
 				_process_payment_success(
 					frappe.get_doc("Integration Request", ir.name), settings, reference_number
 				)
-			elif result.get("transactionStatus") == "FAILED":
+			elif result.get("transactionStatus") in TERMINAL_NOT_PAID_STATUSES:
 				frappe.db.set_value("Integration Request", ir.name, "status", "Failed", update_modified=True)
 				frappe.db.commit()
 		except Exception:

@@ -296,6 +296,79 @@ class TestPesepaySubmitGuard(IntegrationTestCase):
 		mark_pesepay_payment_confirmed(ir_name)
 		self.assertEqual(frappe.db.get_value("Integration Request", ir_name, "status"), "Completed")
 
+	def test_abandon_pesepay_payment_marks_dead_ir(self):
+		"""Terminal 'not paid' gateway results must release the pending IR."""
+		from pesepay.overrides.invoice import (
+			_find_ir,
+			abandon_pesepay_payment,
+			get_pesepay_payment_state,
+		)
+
+		_integration_request("Queued", ROW_AMOUNT, self.reference)
+		ir_name = frappe.db.get_value(
+			"Integration Request",
+			{"reference_docname": self.reference},
+			"name",
+			order_by="creation desc",
+		)
+		found, _ = _find_ir("Sales Invoice", self.reference, ("", "Queued", "Authorized"), GATEWAY)
+		self.assertIsNotNone(found, "pending IR should be resumable before abandon")
+
+		result = abandon_pesepay_payment(ir_name)
+		self.assertTrue(result["ok"])
+		self.assertEqual(frappe.db.get_value("Integration Request", ir_name, "status"), "Cancelled")
+
+		found, _ = _find_ir("Sales Invoice", self.reference, ("", "Queued", "Authorized"), GATEWAY)
+		self.assertIsNone(found, "abandoned IR must no longer be resumable")
+		# And it must be idempotent.
+		self.assertTrue(abandon_pesepay_payment(ir_name)["ok"])
+
+	def test_abandon_refuses_completed_and_non_pesepay_requests(self):
+		from pesepay.overrides.invoice import abandon_pesepay_payment
+
+		_integration_request("Completed", ROW_AMOUNT, self.reference)
+		ir_name = frappe.db.get_value(
+			"Integration Request",
+			{"reference_docname": self.reference, "status": "Completed"},
+			"name",
+			order_by="creation desc",
+		)
+		self.assertFalse(abandon_pesepay_payment(ir_name)["ok"])
+		self.assertEqual(frappe.db.get_value("Integration Request", ir_name, "status"), "Completed")
+
+		self.assertFalse(abandon_pesepay_payment("")["ok"])
+
+	def test_abandon_requires_invoice_submit_permission(self):
+		from pesepay.overrides.invoice import abandon_pesepay_payment
+
+		_integration_request("Queued", ROW_AMOUNT, self.reference)
+		ir_name = frappe.db.get_value(
+			"Integration Request",
+			{"reference_docname": self.reference},
+			"name",
+			order_by="creation desc",
+		)
+
+		email = "pesepay-guard-test-user@example.com"
+		if not frappe.db.exists("User", email):
+			frappe.get_doc(
+				{
+					"doctype": "User",
+					"email": email,
+					"first_name": "Pesepay Guard",
+					"send_welcome_email": 0,
+				}
+			).insert(ignore_permissions=True)
+		frappe.set_user(email)
+		try:
+			with self.assertRaises(frappe.PermissionError):
+				abandon_pesepay_payment(ir_name)
+		finally:
+			frappe.set_user("Administrator")
+
+		# The POS cashier may abandon their own pending payment.
+		self.assertTrue(abandon_pesepay_payment(ir_name)["ok"])
+
 	def test_blank_reference_requests_cannot_be_confirmed(self):
 		"""Requests with no referenced invoice prove nothing — refuse them."""
 		from pesepay.overrides.invoice import mark_pesepay_payment_confirmed

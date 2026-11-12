@@ -8,6 +8,24 @@ GATEWAY_SETTINGS_DOCTYPE = "Pesepay Settings"
 
 PENDING_IR_STATUS = ("", "Queued", "Authorized")
 
+# Gateway statuses that mean the payment is definitively NOT going to be paid
+# (per Pesepay's transaction-status model). Everything else except SUCCESS is
+# still in flight and should keep being polled.
+TERMINAL_NOT_PAID_STATUSES = (
+	"FAILED",
+	"TERMINATED",
+	"TIME_OUT",
+	"CLOSED",
+	"CLOSED_PERIOD_ELAPSED",
+	"INSUFFICIENT_FUNDS",
+	"CANCELLED",
+	"ERROR",
+	"DECLINED",
+	"AUTHORIZATION_FAILED",
+	"SERVICE_UNAVAILABLE",
+	"REVERSED",
+)
+
 
 def _is_pesepay_gateway(payment_gateway):
 	"""Whether *payment_gateway* resolves to PesePay gateway settings."""
@@ -242,3 +260,41 @@ def mark_pesepay_payment_confirmed(ir_name: str | None = None):
 		ir.db_set("status", "Completed", update_modified=True)
 
 	return {"ok": True, "reference_number": ir_name}
+
+
+@frappe.whitelist()
+def abandon_pesepay_payment(ir_name: str | None = None):
+	"""Idempotently mark a Pesepay Integration Request as Cancelled.
+
+	Called by the POS client when the gateway reports a terminal 'not paid'
+	status (customer cancelled, timed out, declined, ...). Marking the request
+	dead lets the cashier start a fresh payment instead of resuming a
+	transaction that will never complete. Same permission rule as
+	mark_pesepay_payment_confirmed: whoever can submit the invoice controls
+	its payment log.
+	"""
+	if not ir_name:
+		return {"ok": False}
+
+	ir = frappe.get_doc("Integration Request", ir_name)
+	if ir.integration_request_service != "Pesepay":
+		return {"ok": False}
+
+	if not ir.reference_doctype or not ir.reference_docname:
+		return {"ok": False}
+
+	if frappe.db.exists(ir.reference_doctype, ir.reference_docname):
+		frappe.has_permission(ir.reference_doctype, "submit", doc=ir.reference_docname, throw=True)
+	else:
+		frappe.has_permission(ir.reference_doctype, "submit", throw=True)
+
+	# Pending requests are marked dead; already-dead ones are a harmless no-op.
+	# Completed requests (money moved) are never rewritten.
+	if ir.status == "Cancelled" or ir.status == "Failed":
+		return {"ok": True, "already_final": True}
+	if ir.status not in ("", "Queued", "Authorized"):
+		return {"ok": False, "error": "already finalized"}
+
+	ir.db_set("status", "Cancelled", update_modified=True)
+
+	return {"ok": True}

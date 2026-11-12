@@ -3,6 +3,24 @@ frappe.provide("pesepay.pos");
 (function () {
 	const MOBILE_METHODS = ["EcoCash", "InnBucks", "Omari"];
 
+	// Pesepay statuses that mean the payment is definitively NOT going to be
+	// paid (mirror of pesepay.overrides.invoice.TERMINAL_NOT_PAID_STATUSES).
+	// Everything else except SUCCESS is still in flight — keep polling.
+	const TERMINAL_NOT_PAID_STATUSES = [
+		"FAILED",
+		"TERMINATED",
+		"TIME_OUT",
+		"CLOSED",
+		"CLOSED_PERIOD_ELAPSED",
+		"INSUFFICIENT_FUNDS",
+		"CANCELLED",
+		"ERROR",
+		"DECLINED",
+		"AUTHORIZATION_FAILED",
+		"SERVICE_UNAVAILABLE",
+		"REVERSED",
+	];
+
 	const METHOD_BY_MODE_NAME = {
 		ecocash: "EcoCash",
 		innbucks: "InnBucks",
@@ -369,6 +387,18 @@ frappe.provide("pesepay.pos");
 		poll_payment(frm, st, dlg, resume);
 	}
 
+	function reset_to_pay_now(frm, st, dlg) {
+		// After a terminal 'not paid' result the dialog goes back to a fresh
+		// payment: the primary button starts a new transaction instead of
+		// resuming the dead one.
+		dlg.pesepay_resume = false;
+		dlg.set_primary_action(__("Pay Now"), (values) => {
+			values.payment_method = dlg.pesepay_selected_method;
+			pay_now(frm, st, dlg, values);
+		});
+		update_pay_button(dlg);
+	}
+
 	// ---------------------------------------------------------------------
 	// Polling + finalize through ERPNext's own submit
 	// ---------------------------------------------------------------------
@@ -399,14 +429,33 @@ frappe.provide("pesepay.pos");
 				.call({ method: method, args: args })
 				.then((r) => {
 					const res = r.message || {};
-					if (res.transactionStatus === "SUCCESS") {
+					const status = res.transactionStatus || "";
+					if (status === "SUCCESS") {
 						confirm_and_submit(frm, dlg, ir_name);
-					} else if (res.transactionStatus === "FAILED") {
+					} else if (TERMINAL_NOT_PAID_STATUSES.includes(status)) {
+						// The customer cancelled/declined/timed out etc. Release the
+						// dead request so the next attempt starts a fresh payment
+						// instead of resuming one that will never complete.
+						frappe
+							.call({
+								method: "pesepay.overrides.invoice.abandon_pesepay_payment",
+								args: { ir_name: ir_name },
+							})
+							.catch(() =>
+								frappe.show_alert({
+									message: __("Could not reset the pending payment."),
+									indicator: "orange",
+								})
+							);
 						set_busy(dlg, false);
+						reset_to_pay_now(frm, st, dlg);
 						set_status(
 							dlg,
-							`<span class="text-danger">${__(
-								"Payment was declined. Please try another method."
+							`<span class="text-danger">${escape_html(
+								res.transactionStatusDescription ||
+									__(
+										"Payment was cancelled or declined. Press Pay Now to try again."
+									)
 							)}</span>`
 						);
 					} else if (attempts < max_attempts) {
