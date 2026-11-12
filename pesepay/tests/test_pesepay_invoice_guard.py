@@ -47,7 +47,10 @@ def _gateway_account_fixture(settings):
 	)
 
 
-def _integration_request(status, amount):
+def _integration_request(status, amount, currency=None):
+	data = {"amount": str(amount), "payment_gateway": GATEWAY}
+	if currency:
+		data["currency"] = currency
 	frappe.get_doc(
 		{
 			"doctype": "Integration Request",
@@ -55,7 +58,7 @@ def _integration_request(status, amount):
 			"status": status,
 			"reference_doctype": "Sales Invoice",
 			"reference_docname": REFERENCE,
-			"data": json.dumps({"amount": str(amount), "payment_gateway": GATEWAY}),
+			"data": json.dumps(data),
 		}
 	).insert(ignore_permissions=True, ignore_links=True)
 
@@ -68,6 +71,7 @@ def _invoice(account, amount=ROW_AMOUNT, company=COMPANY):
 			"doctype": "Sales Invoice",
 			"company": company,
 			"name": REFERENCE,
+			"currency": "USD",
 			"payments": [{"mode_of_payment": GATEWAY, "account": account, "amount": amount}],
 		}
 	)
@@ -102,6 +106,14 @@ class TestPesepaySubmitGuard(IntegrationTestCase):
 
 		_integration_request("Completed", ROW_AMOUNT / 2)
 		doc = _invoice(self.pga.payment_account)
+		with self.assertRaises(frappe.ValidationError):
+			validate_pesepay_payment_confirmed(doc)
+
+	def test_submit_blocked_when_completed_payment_in_different_currency(self):
+		from pesepay.overrides.invoice import validate_pesepay_payment_confirmed
+
+		_integration_request("Completed", ROW_AMOUNT, currency="ZWL")
+		doc = _invoice(self.pga.payment_account)  # invoice currency is USD
 		with self.assertRaises(frappe.ValidationError):
 			validate_pesepay_payment_confirmed(doc)
 
