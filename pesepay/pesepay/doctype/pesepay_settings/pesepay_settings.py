@@ -233,21 +233,17 @@ class PesepaySettings(Document):
         ):
             return
 
-        try:
-            frappe.get_doc(
-                {
-                    "doctype": "Payment Gateway Account",
-                    "is_default": 1,
-                    "payment_gateway": gateway,
-                    "payment_account": bank_account,
-                    "currency": currency,
-                    "payment_channel": "Email",
-                    "company": company,
-                }
-            ).insert(ignore_permissions=True, ignore_if_duplicate=True)
-        except frappe.DuplicateEntryError:
-            # already exists, due to a reinstall?
-            pass
+        frappe.get_doc(
+            {
+                "doctype": "Payment Gateway Account",
+                "is_default": 1,
+                "payment_gateway": gateway,
+                "payment_account": bank_account,
+                "currency": currency,
+                "payment_channel": "Email",
+                "company": company,
+            }
+        ).insert(ignore_permissions=True, ignore_if_duplicate=True)
 
     def _create_mode_of_payment_accounts(self, company=None):
         """Create a Mode of Payment Account row for every company that has a
