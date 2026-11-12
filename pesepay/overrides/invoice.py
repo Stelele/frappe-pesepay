@@ -50,7 +50,7 @@ def get_pesepay_payments(doc):
 def _ir_data(ir):
 	try:
 		data = json.loads(ir.get("data")) if isinstance(ir.get("data"), str) else (ir.get("data") or {})
-	except (json.JSONDecodeError, TypeError):
+	except json.JSONDecodeError, TypeError:
 		data = {}
 	return data or {}
 
@@ -131,9 +131,7 @@ def get_pesepay_payment_state(invoice_doctype, invoice_name):
 	if confirmed is not None and flt(confirmed_data.get("amount", 0)) < row_amount - 0.01:
 		confirmed, confirmed_data = None, {}
 
-	pending, pending_data = _find_ir(
-		invoice_doctype, invoice_name, ("Queued", "Authorized", ""), gateway
-	)
+	pending, pending_data = _find_ir(invoice_doctype, invoice_name, ("Queued", "Authorized", ""), gateway)
 
 	return {
 		"has_payment": True,
@@ -163,7 +161,13 @@ def validate_pesepay_payment_confirmed(doc, method=None):
 		gateway = entry["gateway_account"]["payment_gateway"]
 		amount = flt(row.get("amount"))
 		confirmed, data = _find_ir(doc.doctype, doc.name, ("Completed",), gateway)
-		if confirmed is None or flt(data.get("amount", 0)) < amount - 0.01:
+		# Currency is tolerated as missing for older requests recorded before
+		# the field was tracked in the request payload.
+		if (
+			confirmed is None
+			or data.get("currency") not in (None, doc.get("currency"))
+			or flt(data.get("amount", 0)) < amount - 0.01
+		):
 			frappe.throw(
 				_(
 					"Row {0}: {1} for {2} has not been collected in PesePay yet. Use the"

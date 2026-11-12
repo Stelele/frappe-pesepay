@@ -159,7 +159,7 @@ class PesepaySettings(Document):
             "name",
         )
 
-    def _create_gateway_accounts(self):
+    def _create_gateway_accounts(self, company=None):
         """Create a Payment Gateway Account for every company on the site.
 
         POS mode detection joins Mode of Payment Account -> Payment Gateway
@@ -171,11 +171,15 @@ class PesepaySettings(Document):
         (`create_payment_gateway_account`) de-duplicates by gateway + currency
         only, so it silently skips every company after the first — which is how
         companies set up later end up without an account.
+
+        Pass *company* to scope provisioning to a single company (used by the
+        new-company hook).
         """
         if "erpnext" not in frappe.get_installed_apps():
             return
         gateway = f"Pesepay-{self.gateway_name}"
-        for company in self._get_companies():
+        companies = [company] if company else self._get_companies()
+        for company in companies:
             try:
                 self._create_gateway_account(gateway, company)
             except Exception:
@@ -245,12 +249,15 @@ class PesepaySettings(Document):
             # already exists, due to a reinstall?
             pass
 
-    def _create_mode_of_payment_accounts(self):
+    def _create_mode_of_payment_accounts(self, company=None):
         """Create a Mode of Payment Account row for every company that has a
         PesePay bank account, defaulting to that company's PesePay account.
 
         Without these rows the Mode of Payment can't be used in POS for the
         company, so this removes the manual per-company setup step.
+
+        Pass *company* to scope provisioning to a single company (used by the
+        new-company hook).
         """
         if "erpnext" not in frappe.get_installed_apps():
             return
@@ -262,7 +269,8 @@ class PesepaySettings(Document):
         existing = {row.company for row in mop.accounts}
         appended = False
 
-        for company in self._get_companies():
+        companies = [company] if company else self._get_companies()
+        for company in companies:
             if company in existing:
                 continue
             account = self._find_pesepay_account(gateway, company)

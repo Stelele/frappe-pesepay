@@ -26,8 +26,8 @@ def setup_pesepay_for_company(doc, method=None):
 		try:
 			settings = frappe.get_doc("Pesepay Settings", name)
 			settings._create_mode_of_payment()
-			settings._create_gateway_accounts()
-			settings._create_mode_of_payment_accounts()
+			settings._create_gateway_accounts(company=doc.name)
+			settings._create_mode_of_payment_accounts(company=doc.name)
 		except Exception:
 			frappe.log_error(
 				frappe.get_traceback(),
