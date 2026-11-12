@@ -67,7 +67,9 @@ frappe.provide("pesepay.pos");
 	function mount_pay_button(frm) {
 		if (!window.cur_pos || !cur_pos.payment) return;
 		fetch_mode_map(frm.doc.company).then((mode_map) => {
-			const has_pesepay_mode = (frm.doc.payments || []).some((p) => mode_map[p.mode_of_payment]);
+			const has_pesepay_mode = (frm.doc.payments || []).some(
+				(p) => mode_map[p.mode_of_payment]
+			);
 			if (!has_pesepay_mode) return;
 
 			const container = $(cur_pos.payment.$component).find(".payment-container-left");
@@ -120,9 +122,11 @@ frappe.provide("pesepay.pos");
 					});
 					return;
 				}
-				frappe.model.set_value(any_row.doctype, any_row.name, "amount", remaining).then(() => {
-					open_pesepay_dialog(frm);
-				});
+				frappe.model
+					.set_value(any_row.doctype, any_row.name, "amount", remaining)
+					.then(() => {
+						open_pesepay_dialog(frm);
+					});
 				return;
 			}
 
@@ -207,7 +211,10 @@ frappe.provide("pesepay.pos");
 		};
 
 		dlg.fields_dict.amount_html.$wrapper.html(
-			`<div class="mb-2"><strong>${__("Amount")}:</strong> ${format_currency(st.amount, st.currency)}</div>`
+			`<div class="mb-2"><strong>${__("Amount")}:</strong> ${format_currency(
+				st.amount,
+				st.currency
+			)}</div>`
 		);
 
 		render_method_buttons(dlg, method, (m) => {
@@ -259,7 +266,10 @@ frappe.provide("pesepay.pos");
 	}
 
 	function guess_method(frm, st) {
-		const mode = [st.pay_method_name, ...(frm.doc.payments || []).map((p) => p.mode_of_payment)]
+		const mode = [
+			st.pay_method_name,
+			...(frm.doc.payments || []).map((p) => p.mode_of_payment),
+		]
 			.filter(Boolean)
 			.join(" ")
 			.toLowerCase();
@@ -293,8 +303,7 @@ frappe.provide("pesepay.pos");
 		set_status(dlg, __("Initiating payment..."));
 
 		frm.dirty();
-		frm
-			.save()
+		frm.save()
 			.then(() =>
 				frappe.call({
 					method: "pesepay.templates.pages.pesepay_checkout.make_seamless_payment",
@@ -316,7 +325,12 @@ frappe.provide("pesepay.pos");
 				const msg = r.message || {};
 				if (msg.success === false) {
 					set_busy(dlg, false);
-					set_status(dlg, `<span class="text-danger">${msg.error || __("Payment could not be initiated.")}</span>`);
+					set_status(
+						dlg,
+						`<span class="text-danger">${
+							msg.error || __("Payment could not be initiated.")
+						}</span>`
+					);
 					return;
 				}
 				if (msg.is_paid) {
@@ -327,7 +341,12 @@ frappe.provide("pesepay.pos");
 			})
 			.catch(() => {
 				set_busy(dlg, false);
-				set_status(dlg, `<span class="text-danger">${__("Payment request failed. Please try again.")}</span>`);
+				set_status(
+					dlg,
+					`<span class="text-danger">${__(
+						"Payment request failed. Please try again."
+					)}</span>`
+				);
 			});
 	}
 
@@ -343,7 +362,8 @@ frappe.provide("pesepay.pos");
 	function poll_payment(frm, st, dlg, msg) {
 		const ir_name = msg.merchant_reference || st.pending_ir || null;
 		const poll_url = msg.poll_url || st.poll_url;
-		const reference_number = msg.reference_number || (st.reference_number && !poll_url ? st.reference_number : "");
+		const reference_number =
+			msg.reference_number || (st.reference_number && !poll_url ? st.reference_number : "");
 		const gateway = st.gateway;
 
 		const max_attempts = 60;
@@ -361,25 +381,30 @@ frappe.provide("pesepay.pos");
 				? "pesepay.pesepay.doctype.pesepay_settings.pesepay_settings.poll_payment_status"
 				: "pesepay.pesepay.doctype.pesepay_settings.pesepay_settings.poll_payment_reference";
 
-			frappe
-				.call({ method: method, args: args })
-				.then((r) => {
-					const res = r.message || {};
-					if (res.transactionStatus === "SUCCESS") {
-						confirm_and_submit(frm, dlg, ir_name);
-					} else if (res.transactionStatus === "FAILED") {
-						set_busy(dlg, false);
-						set_status(dlg, `<span class="text-danger">${__("Payment was declined. Please try another method.")}</span>`);
-					} else if (attempts < max_attempts) {
-						setTimeout(tick, 3000);
-					} else {
-						set_busy(dlg, false, __("Continue"));
-						set_status(
-							dlg,
-							__("Payment is taking longer than expected. Close this popup; it will finalize when PesePay confirms.")
-						);
-					}
-				});
+			frappe.call({ method: method, args: args }).then((r) => {
+				const res = r.message || {};
+				if (res.transactionStatus === "SUCCESS") {
+					confirm_and_submit(frm, dlg, ir_name);
+				} else if (res.transactionStatus === "FAILED") {
+					set_busy(dlg, false);
+					set_status(
+						dlg,
+						`<span class="text-danger">${__(
+							"Payment was declined. Please try another method."
+						)}</span>`
+					);
+				} else if (attempts < max_attempts) {
+					setTimeout(tick, 3000);
+				} else {
+					set_busy(dlg, false, __("Continue"));
+					set_status(
+						dlg,
+						__(
+							"Payment is taking longer than expected. Close this popup; it will finalize when PesePay confirms."
+						)
+					);
+				}
+			});
 		}
 
 		setTimeout(tick, 3000);
@@ -404,7 +429,12 @@ frappe.provide("pesepay.pos");
 			})
 			.catch(() => {
 				set_busy(dlg, false);
-				set_status(dlg, `<span class="text-danger">${__("Payment confirmed but the order could not be submitted. Please submit it manually.")}</span>`);
+				set_status(
+					dlg,
+					`<span class="text-danger">${__(
+						"Payment confirmed but the order could not be submitted. Please submit it manually."
+					)}</span>`
+				);
 			});
 	}
 
