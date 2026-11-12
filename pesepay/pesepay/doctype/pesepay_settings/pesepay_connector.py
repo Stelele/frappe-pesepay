@@ -4,9 +4,10 @@ from __future__ import annotations
 # cryptography.hazmat  --  AES-256-CBC with PKCS7 padding
 # ---------------------------------------------------------------------------
 import base64
+import binascii
 import json
 import urllib.parse
-from typing import Any, Optional
+from typing import Any
 
 import frappe
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -304,7 +305,7 @@ class PesePayConnector:
 		try:
 			plain_bytes = self._crypto.decrypt(payload_b64)
 			return json.loads(plain_bytes.decode("utf-8"))
-		except (ValueError, base64.binascii.Error) as exc:
+		except (ValueError, binascii.Error) as exc:
 			# C# SDK catches CryptographicException and falls back to raw body
 			frappe.log_error(
 				title="PesePay Decrypt Fallback",

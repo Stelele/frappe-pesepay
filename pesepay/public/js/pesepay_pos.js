@@ -279,6 +279,7 @@ frappe.provide("pesepay.pos");
 	}
 
 	function escape_html(value) {
+		// `== null` is deliberate: covers both null and undefined in one check.
 		return String(value == null ? "" : value).replace(
 			/[&<>"']/g,
 			(ch) =>
@@ -394,30 +395,48 @@ frappe.provide("pesepay.pos");
 				? "pesepay.pesepay.doctype.pesepay_settings.pesepay_settings.poll_payment_status"
 				: "pesepay.pesepay.doctype.pesepay_settings.pesepay_settings.poll_payment_reference";
 
-			frappe.call({ method: method, args: args }).then((r) => {
-				const res = r.message || {};
-				if (res.transactionStatus === "SUCCESS") {
-					confirm_and_submit(frm, dlg, ir_name);
-				} else if (res.transactionStatus === "FAILED") {
-					set_busy(dlg, false);
-					set_status(
-						dlg,
-						`<span class="text-danger">${__(
-							"Payment was declined. Please try another method."
-						)}</span>`
-					);
-				} else if (attempts < max_attempts) {
-					setTimeout(tick, 3000);
-				} else {
-					set_busy(dlg, false, __("Continue"));
-					set_status(
-						dlg,
-						__(
-							"Payment is taking longer than expected. Close this popup; it will finalize when PesePay confirms."
-						)
-					);
-				}
-			});
+			frappe
+				.call({ method: method, args: args })
+				.then((r) => {
+					const res = r.message || {};
+					if (res.transactionStatus === "SUCCESS") {
+						confirm_and_submit(frm, dlg, ir_name);
+					} else if (res.transactionStatus === "FAILED") {
+						set_busy(dlg, false);
+						set_status(
+							dlg,
+							`<span class="text-danger">${__(
+								"Payment was declined. Please try another method."
+							)}</span>`
+						);
+					} else if (attempts < max_attempts) {
+						setTimeout(tick, 3000);
+					} else {
+						set_busy(dlg, false, __("Continue"));
+						set_status(
+							dlg,
+							__(
+								"Payment is taking longer than expected. Close this popup; it will finalize when PesePay confirms."
+							)
+						);
+					}
+				})
+				.catch(() => {
+					// A transient poll failure (network, session, server restart)
+					// must not stop the polling loop; keep retrying until the
+					// attempt budget is exhausted.
+					if (attempts < max_attempts) {
+						setTimeout(tick, 5000);
+					} else {
+						set_busy(dlg, false, __("Continue"));
+						set_status(
+							dlg,
+							`<span class="text-danger">${__(
+								"Payment status could not be checked. Please contact support if you were charged."
+							)}</span>`
+						);
+					}
+				});
 		}
 
 		setTimeout(tick, 3000);
