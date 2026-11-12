@@ -165,6 +165,12 @@ class TestPesepaySubmitGuard(IntegrationTestCase):
 		super().setUpClass()
 		cls.settings = _settings_fixture()
 		cls.company = _company_fixture()
+		# Provision explicitly rather than relying on the Company hook: class
+		# teardown rolls back hook-created rows between test classes, and CI
+		# showed the hook-provisioned PGA vanishing after the company-setup
+		# class ended. Same functions, same idempotent outcome.
+		cls.settings._create_gateway_accounts(company=cls.company.name)
+		cls.settings._create_mode_of_payment_accounts(company=cls.company.name)
 		cls.pga = _gateway_account_fixture(cls.settings, cls.company.name)
 		if not cls.pga:
 			raise RuntimeError("fixture failed: no Payment Gateway Account for the test company")
