@@ -312,6 +312,35 @@ class TestPesepaySubmitGuard(IntegrationTestCase):
 		self.assertEqual(mark_pesepay_payment_confirmed(ir.name)["ok"], False)
 		self.assertEqual(frappe.db.get_value("Integration Request", ir.name, "status"), "Queued")
 
+	def test_seamless_payment_rejects_unallowed_reference(self):
+		"""The guest checkout endpoint must not probe arbitrary doctypes."""
+		import json
+		from unittest.mock import patch
+
+		_settings_fixture()
+		from pesepay.templates.pages.pesepay_checkout import make_seamless_payment
+
+		# A disallowed reference must be rejected before a request log is
+		# created or the gateway connector is touched at all.
+		with patch(
+			"pesepay.pesepay.doctype.pesepay_settings.pesepay_connector.PesePayConnector.initiate_seamless_payment"
+		) as initiate:
+			with self.assertRaises(frappe.ValidationError):
+				make_seamless_payment(
+					gateway_name=GATEWAY,
+					amount="10",
+					currency="USD",
+					email="",
+					phone_number="",
+					customer_name="",
+					payment_method="EcoCash",
+					reference_doctype="User",
+					reference_docname="Administrator",
+					title="probe",
+				)
+		self.assertFalse(initiate.called, "connector must not run for a rejected reference")
+		self.assertFalse(frappe.db.exists("Integration Request", {"reference_docname": "Administrator"}))
+
 
 class TestPesepayCompanySetup(IntegrationTestCase):
 	@classmethod

@@ -3,6 +3,8 @@ from frappe import _
 
 no_cache = 1
 
+ALLOWED_REFERENCE_DOCTYPES = ("Sales Invoice", "POS Invoice")
+
 EXPECTED_KEYS = (
 	"amount",
 	"title",
@@ -59,6 +61,14 @@ def make_seamless_payment(
 ):
 	"""Process a seamless (server-to-server) payment."""
 	from payments.utils import get_payment_gateway_controller
+
+	# The reference comes from a guest-accessible endpoint, so restrict it to
+	# the doctypes this app actually creates checkouts for. Anything else
+	# could be used to probe arbitrary documents.
+	if reference_doctype not in ALLOWED_REFERENCE_DOCTYPES:
+		frappe.throw(
+			_("Pesepay checkout does not support payment references of type {0}.").format(reference_doctype)
+		)
 
 	if reference_doctype and reference_docname and not amount:
 		try:
