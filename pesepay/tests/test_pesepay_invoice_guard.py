@@ -145,7 +145,7 @@ def _integration_request(status, amount, reference, currency=None):
 	).insert(ignore_permissions=True, ignore_links=True)
 
 
-def _invoice(account, reference, amount=ROW_AMOUNT, company=None):
+def _invoice(account, reference, amount=ROW_AMOUNT, company=None, is_consolidated=0):
 	# A saved POS/Sales Invoice always has a name by the time before_submit runs;
 	# the guard only reads fields off the doc, so a named unsaved doc is enough.
 	return frappe.get_doc(
@@ -154,6 +154,7 @@ def _invoice(account, reference, amount=ROW_AMOUNT, company=None):
 			"company": company,
 			"name": reference,
 			"currency": "USD",
+			"is_consolidated": is_consolidated,
 			"payments": [{"mode_of_payment": GATEWAY, "account": account, "amount": amount}],
 		}
 	)
@@ -228,6 +229,27 @@ class TestPesepaySubmitGuard(IntegrationTestCase):
 		doc.payments.append({"mode_of_payment": GATEWAY, "account": self.pga.payment_account, "amount": 5})
 		_integration_request("Completed", ROW_AMOUNT, self.reference)
 		_integration_request("Completed", 5, self.reference)
+		validate_pesepay_payment_confirmed(doc)  # must not raise
+
+	def test_consolidated_invoice_is_skipped(self):
+		"""POS Closing consolidation must not be blocked by the guard.
+
+		When a POS Closing Entry submits, erpnext merges submitted POS Invoices
+		into a fresh Sales Invoice (is_consolidated = 1) whose Pesepay payment
+		rows are copied from those invoices. Integration Requests reference the
+		original POS Invoices, never the merged copy, so the guard can never
+		find coverage for it — and closing would fail for every Pesepay day.
+		Validation already happened when the source POS Invoices were
+		submitted, so the merged copy is skipped.
+		"""
+		from pesepay.overrides.invoice import validate_pesepay_payment_confirmed
+
+		doc = _invoice(
+			self.pga.payment_account,
+			self.reference,
+			company=self.company.name,
+			is_consolidated=1,
+		)
 		validate_pesepay_payment_confirmed(doc)  # must not raise
 
 	def test_ignores_payment_rows_not_mapped_to_pesepay(self):

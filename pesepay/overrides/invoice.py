@@ -200,7 +200,15 @@ def validate_pesepay_payment_confirmed(doc, method=None):
 	Integration Requests don't record which payment row they pay for, so rows
 	are grouped by gateway and each group's row total must be covered by the
 	sum of that gateway's completed (currency-matching) requests.
+
+	Consolidated Sales Invoices (POS Closing) are skipped: their payment rows
+	are copied from already-submitted POS Invoices whose own submits ran this
+	guard, and Integration Requests reference those source invoices, never the
+	merged copy — so this check could never pass for one.
 	"""
+	if doc.get("is_consolidated"):
+		return
+
 	rows_by_gateway = {}
 	for entry in get_pesepay_payments(doc):
 		gateway = entry["gateway_account"]["payment_gateway"]
